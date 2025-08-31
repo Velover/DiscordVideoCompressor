@@ -1,11 +1,14 @@
 #include "videoplayer.h"
 #include <QDebug>
 #include <QFileInfo>
+#include <QTimer>
 
 VideoPlayer::VideoPlayer(QObject *parent)
     : QObject(parent)
     , m_mediaPlayer(new QMediaPlayer(this))
     , m_audioOutput(new QAudioOutput(this))
+    , m_initialLoad(true)
+    , m_seeking(false)
 {
     // Setup audio output
     m_mediaPlayer->setAudioOutput(m_audioOutput);
@@ -74,12 +77,50 @@ QString VideoPlayer::currentSource() const
 
 void VideoPlayer::setPosition(qint64 position)
 {
-    if (m_mediaPlayer && m_mediaPlayer->duration() > 0) {
-        // Ensure position is within valid bounds
-        qint64 clampedPosition = qMax(0LL, qMin(position, m_mediaPlayer->duration()));
-        qDebug() << "Setting position to:" << clampedPosition << "duration:" << m_mediaPlayer->duration();
-        m_mediaPlayer->setPosition(clampedPosition);
+    if (!m_mediaPlayer) return;
+    
+    // Allow seeking if media is loaded, buffered, OR if we're currently seeking
+    bool canSeek = (m_mediaPlayer->mediaStatus() == QMediaPlayer::LoadedMedia || 
+                    m_mediaPlayer->mediaStatus() == QMediaPlayer::BufferedMedia ||
+                    m_mediaPlayer->mediaStatus() == QMediaPlayer::BufferingMedia) &&
+                   m_mediaPlayer->duration() > 0;
+    
+    if (!canSeek) {
+        qDebug() << "Cannot seek: media not ready. Status:" << m_mediaPlayer->mediaStatus() 
+                 << "Duration:" << m_mediaPlayer->duration();
+        return;
     }
+    
+    // Prevent overlapping seeks
+    if (m_seeking) {
+        qDebug() << "Ignoring seek request - already seeking";
+        return;
+    }
+    
+    // Ensure position is within valid bounds
+    qint64 clampedPosition = qMax(0LL, qMin(position, m_mediaPlayer->duration()));
+    qint64 currentPosition = m_mediaPlayer->position();
+    
+    qDebug() << "Setting position to:" << clampedPosition 
+             << "from current:" << currentPosition 
+             << "duration:" << m_mediaPlayer->duration()
+             << "status:" << m_mediaPlayer->mediaStatus();
+    
+    m_seeking = true;
+    m_mediaPlayer->setPosition(clampedPosition);
+    
+    // Reset seeking flag after a delay
+    QTimer::singleShot(200, this, [this]() {
+        m_seeking = false;
+        qDebug() << "Seek operation completed";
+    });
+    
+    // Verify the position was set
+    QTimer::singleShot(100, this, [this, clampedPosition]() {
+        qint64 actualPosition = m_mediaPlayer->position();
+        qDebug() << "Position verification - requested:" << clampedPosition 
+                 << "actual:" << actualPosition;
+    });
 }
 
 void VideoPlayer::setVolume(qreal volume)
@@ -120,6 +161,7 @@ void VideoPlayer::stop()
 void VideoPlayer::loadVideo(const QUrl &url)
 {
     qDebug() << "Loading video:" << url;
+    m_initialLoad = true; // Reset initial load flag for new video
     m_mediaPlayer->setSource(url);
     m_currentSource = url.toString();
     emit currentSourceChanged();
@@ -144,8 +186,16 @@ void VideoPlayer::handleMediaStatusChanged(QMediaPlayer::MediaStatus status)
         break;
     case QMediaPlayer::LoadedMedia:
         qDebug() << "Media loaded successfully";
-        // Seek to first frame to display static image when not playing
-        m_mediaPlayer->setPosition(0);
+        // Only seek to position 0 and pause on initial load of a new video
+        // Don't interfere with seeking operations during playback
+        if (m_initialLoad) {
+            qDebug() << "Initial load - setting position to 0 and pausing";
+            m_mediaPlayer->setPosition(0);
+            m_mediaPlayer->pause();
+            m_initialLoad = false;
+        } else {
+            qDebug() << "Seek-triggered load - not resetting position";
+        }
         break;
     case QMediaPlayer::BufferedMedia:
         qDebug() << "Media buffered and ready";

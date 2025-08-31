@@ -64,6 +64,8 @@ private:
     QMediaPlayer *m_mediaPlayer;
     QAudioOutput *m_audioOutput;
     QString m_currentSource;
+    bool m_initialLoad;
+    bool m_seeking;
 };
 
 #endif // VIDEOPLAYER_H
