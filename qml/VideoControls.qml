@@ -91,21 +91,64 @@ Rectangle {
             
             from: 0
             to: player ? player.duration : 1
-            value: player ? player.position : 0
+            value: player && !seeking ? player.position : progressSlider.value
             
             property bool seeking: false
+            property bool wasPlaying: false
+            property bool isDragging: false
+            
+            // Disable live updates to prevent click-through
+            live: false
             
             onPressedChanged: {
-                seeking = pressed
-                if (!pressed && player) {
-                    player.setPosition(value)
+                if (pressed) {
+                    // Store if video was playing before seeking (1 = PlayingState)
+                    wasPlaying = player && (player.playbackState === 1)
+                    seeking = true
+                    isDragging = false
+                    // Pause during seeking to prevent interference
+                    if (player && wasPlaying) {
+                        player.pause()
+                    }
+                } else {
+                    // User released the slider - only seek if it was actually dragged
+                    if (player && player.duration > 0 && (isDragging || Math.abs(progressSlider.value - player.position) > 1000)) {
+                        // Set the new position with bounds checking
+                        var newPosition = Math.max(0, Math.min(player.duration, Math.floor(progressSlider.value)))
+                        console.log("Seeking to position:", newPosition, "from:", player.position)
+                        player.position = newPosition
+                        // Resume playing only if it was playing before
+                        if (wasPlaying) {
+                            player.play()
+                        }
+                    } else if (!isDragging) {
+                        // If it was just a click without drag, restore original value
+                        progressSlider.value = player ? player.position : 0
+                    }
+                    seeking = false
+                    isDragging = false
                 }
             }
             
             onMoved: {
+                // Mark that the user is actually dragging
+                isDragging = true
                 if (seeking && player) {
-                    // Update position while dragging for preview
-                    currentTimeLabel.text = formatTime(value)
+                    // Update time display while dragging for preview
+                    currentTimeLabel.text = formatTime(progressSlider.value)
+                } else if (!seeking && player) {
+                    // Restore normal time display when not seeking
+                    currentTimeLabel.text = formatTime(player.position)
+                }
+            }
+            
+            // Prevent automatic updates while user is seeking
+            Connections {
+                target: player
+                function onPositionChanged() {
+                    if (!progressSlider.seeking) {
+                        progressSlider.value = player.position
+                    }
                 }
             }
         }

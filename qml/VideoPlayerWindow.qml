@@ -9,7 +9,7 @@ ApplicationWindow {
     visible: true
     width: 1280
     height: 720
-    title: "Video Player - " + (videoPlayer.currentSource ? videoPlayer.currentSource : "No video loaded")
+    title: "Video Player - " + (videoPlayer && videoPlayer.currentSource ? videoPlayer.currentSource : "No video loaded")
     
     property bool isFullScreen: false
     
@@ -97,9 +97,10 @@ ApplicationWindow {
                 target: videoPlayer
                 function onPlaybackStateChanged() {
                     console.log("Playback state:", videoPlayer.playbackState)
-                    // Force update when paused
-                    if (videoPlayer.playbackState === MediaPlayer.PausedState) {
-                        videoOutput.update()
+                    // When video is loaded, seek to beginning to show first frame
+                    if (videoPlayer.playbackState === MediaPlayer.LoadedState) {
+                        console.log("Video loaded, seeking to start")
+                        videoPlayer.position = 0
                     }
                 }
             }
@@ -128,7 +129,7 @@ ApplicationWindow {
         // Loading indicator
         BusyIndicator {
             anchors.centerIn: parent
-            visible: videoPlayer.playbackState === MediaPlayer.PlayingState && videoPlayer.position === 0
+            visible: videoPlayer && videoPlayer.playbackState === MediaPlayer.PlayingState && videoPlayer.position === 0
         }
         
         // Placeholder text when no video is loaded
@@ -137,7 +138,7 @@ ApplicationWindow {
             text: "Drop video file here or press Ctrl+V to paste from clipboard"
             color: "white"
             font.pixelSize: 18
-            visible: !videoPlayer.currentSource
+            visible: !videoPlayer || !videoPlayer.currentSource
         }
         
         // Video controls

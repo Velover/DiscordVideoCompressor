@@ -74,7 +74,12 @@ QString VideoPlayer::currentSource() const
 
 void VideoPlayer::setPosition(qint64 position)
 {
-    m_mediaPlayer->setPosition(position);
+    if (m_mediaPlayer && m_mediaPlayer->duration() > 0) {
+        // Ensure position is within valid bounds
+        qint64 clampedPosition = qMax(0LL, qMin(position, m_mediaPlayer->duration()));
+        qDebug() << "Setting position to:" << clampedPosition << "duration:" << m_mediaPlayer->duration();
+        m_mediaPlayer->setPosition(clampedPosition);
+    }
 }
 
 void VideoPlayer::setVolume(qreal volume)
@@ -107,9 +112,9 @@ void VideoPlayer::pause()
 
 void VideoPlayer::stop()
 {
-    m_mediaPlayer->stop();
-    // Seek to first frame to display static image when stopped
+    // Set position to 0 first, then pause to keep the first frame visible
     m_mediaPlayer->setPosition(0);
+    m_mediaPlayer->pause();
 }
 
 void VideoPlayer::loadVideo(const QUrl &url)
