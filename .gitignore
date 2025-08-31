@@ -80,6 +80,11 @@ ui_*.h
 
 # Generated files from Qt
 *_autogen/
+*_qmltyperegistrations.cpp
+
+# Qt Quick Compiler generated files
+*.qmlc
+*.jsc
 
 # Prerequisites
 *.d
