@@ -28,13 +28,7 @@ if (Test-Path ".\out") {
 
 # Configure with CMake
 Write-Host "Configuring CMake for $BuildType build..." -ForegroundColor Blue
-cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=$BuildType | Where-Object { 
-    $_ -notmatch "^--" -and 
-    $_ -notmatch "^Checking" -and 
-    $_ -notmatch "^Updating" -and
-    $_ -notmatch "Installing:" -and
-    $_ -ne ""
-}
+cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE="$BuildType"
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "CMake configuration failed!" -ForegroundColor Red
@@ -43,12 +37,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # Build the project
 Write-Host "Building project..." -ForegroundColor Blue
-cmake --build build --config $BuildType | Where-Object { 
-    $_ -notmatch "^\[" -and 
-    $_ -notmatch "^Running" -and 
-    $_ -notmatch "^Built target" -and
-    $_ -ne ""
-}
+cmake --build build --config $BuildType
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Build failed!" -ForegroundColor Red
