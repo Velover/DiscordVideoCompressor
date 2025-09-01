@@ -33,10 +33,10 @@ VideoCompressor::VideoCompressor(QObject *parent)
 {
     m_tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/VideoCompressor";
     
-    // Clean up temp files from previous sessions on startup
-    cleanupTempFiles();
+    // Smart cleanup on startup: preserve files that are currently in clipboard
+    smartCleanupTempFiles();
     
-    // Create fresh temp directory
+    // Create fresh temp directory if it doesn't exist
     QDir().mkpath(m_tempDir);
     
     connect(m_progressTimer, &QTimer::timeout, this, &VideoCompressor::onFFmpegProgress);
@@ -46,8 +46,8 @@ VideoCompressor::VideoCompressor(QObject *parent)
 
 VideoCompressor::~VideoCompressor()
 {
-    // Don't cleanup temp files on exit - they may be needed for clipboard access
-    // cleanupTempFiles(); // Removed this line
+    // Smart cleanup: remove temp files but preserve those in clipboard
+    smartCleanupTempFiles();
 }
 
 int VideoCompressor::rowCount(const QModelIndex &parent) const
@@ -203,9 +203,9 @@ void VideoCompressor::startCompression()
         return;
     }
     
-    // Clean up any old temp files before starting new compression
-    emit debugMessage("Cleaning up old temporary files before compression...", "info");
-    cleanupTempFiles();
+    // Smart cleanup: remove old temp files but preserve those in clipboard
+    emit debugMessage("Cleaning up old temporary files (preserving clipboard files)...", "info");
+    smartCleanupTempFiles();
     QDir().mkpath(m_tempDir); // Recreate temp directory
     
     // Re-check FFmpeg availability before starting
@@ -749,6 +749,7 @@ void VideoCompressor::copyToClipboard()
     clipboard->setMimeData(mimeData);
     
     emit debugMessage("Copied " + QString::number(completedPaths.size()) + " videos to clipboard", "success");
+    emit debugMessage("Files will be preserved in temp folder until clipboard changes", "info");
     emit debugMessage("Paths copied: " + completedPaths.join(", "), "info");
 }
 
@@ -1221,5 +1222,86 @@ QString VideoCompressor::getFFmpegCommand(const VideoItem &item, const QString &
                .arg(item.path)
                .arg(videoBitrate)
                .arg(outputPath);
+    }
+}
+
+bool VideoCompressor::isFileInClipboard(const QString &filePath)
+{
+    QClipboard *clipboard = QApplication::clipboard();
+    const QMimeData *mimeData = clipboard->mimeData();
+    
+    if (!mimeData || !mimeData->hasUrls()) {
+        return false;
+    }
+    
+    // Check if this specific file path is in the clipboard
+    QList<QUrl> clipboardUrls = mimeData->urls();
+    QString normalizedPath = QDir::toNativeSeparators(QFileInfo(filePath).absoluteFilePath());
+    
+    for (const QUrl &url : clipboardUrls) {
+        if (url.isLocalFile()) {
+            QString clipboardPath = QDir::toNativeSeparators(QFileInfo(url.toLocalFile()).absoluteFilePath());
+            if (clipboardPath == normalizedPath) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+void VideoCompressor::smartCleanupTempFiles()
+{
+    QDir tempDir(m_tempDir);
+    if (!tempDir.exists()) {
+        return;
+    }
+    
+    // Get all files in temp directory
+    QStringList allFiles = tempDir.entryList(QDir::Files | QDir::NoDotAndDotDot);
+    QStringList filesToRemove;
+    QStringList filesPreserved;
+    
+    emit debugMessage("Performing smart cleanup of temporary files...", "info");
+    
+    for (const QString &fileName : allFiles) {
+        QString fullPath = tempDir.filePath(fileName);
+        
+        // Check if file is currently in clipboard
+        if (isFileInClipboard(fullPath)) {
+            filesPreserved.append(fileName);
+            emit debugMessage("Preserving clipboard file: " + fileName, "info");
+        } else {
+            filesToRemove.append(fileName);
+        }
+    }
+    
+    // Remove files not in clipboard
+    int removedCount = 0;
+    for (const QString &fileName : filesToRemove) {
+        QString fullPath = tempDir.filePath(fileName);
+        if (QFile::remove(fullPath)) {
+            removedCount++;
+        }
+    }
+    
+    // Log cleanup results
+    if (removedCount > 0) {
+        emit debugMessage("Cleaned up " + QString::number(removedCount) + " temporary files", "success");
+    }
+    
+    if (!filesPreserved.isEmpty()) {
+        emit debugMessage("Preserved " + QString::number(filesPreserved.size()) + " clipboard files", "info");
+    }
+    
+    // If no files preserved and temp directory is empty (except for subdirectories), remove it
+    QStringList remainingFiles = tempDir.entryList(QDir::Files | QDir::NoDotAndDotDot);
+    if (remainingFiles.isEmpty()) {
+        // Check if there are any subdirectories
+        QStringList remainingDirs = tempDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        if (remainingDirs.isEmpty()) {
+            tempDir.removeRecursively();
+            emit debugMessage("Removed empty temp directory", "info");
+        }
     }
 }

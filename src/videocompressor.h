@@ -131,6 +131,8 @@ private:
     void updateVideoStatus(int index, VideoStatus status, const QString &statusText, int progress = 0);
     QString getFFmpegCommand(const VideoItem &item, const QString &outputPath, bool isFirstPass = false);
     void cleanupTempFiles();
+    void smartCleanupTempFiles(); // Add smart cleanup method
+    bool isFileInClipboard(const QString &filePath); // Add clipboard check method
     double getVideoDuration(const QString &filePath); // Add duration detection
     int calculateOptimalBitrate(double durationSeconds, int targetSizeMB); // Add bitrate calculation
     void cleanupPassFiles(); // Add cleanup for pass files
