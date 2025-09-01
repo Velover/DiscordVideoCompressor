@@ -20,6 +20,9 @@ VideoCompressor::VideoCompressor(QObject *parent)
     , m_completedCount(0)
     , m_ffmpegProcess(nullptr)
     , m_progressTimer(new QTimer(this))
+    , m_hardwareAccelerationEnabled(false)
+    , m_hardwareAccelerationAvailable(false)
+    , m_hardwareAccelerationType("None")
 {
     m_tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/VideoCompressor";
     QDir().mkpath(m_tempDir);
@@ -242,6 +245,194 @@ void VideoCompressor::processNextVideo()
     startFFmpegProcess(item, tempPath, true);
 }
 
+void VideoCompressor::setHardwareAccelerationEnabled(bool enabled)
+{
+    if (m_hardwareAccelerationEnabled != enabled) {
+        m_hardwareAccelerationEnabled = enabled;
+        emit hardwareAccelerationEnabledChanged();
+        
+        if (enabled && m_hardwareAccelerationAvailable) {
+            emit debugMessage("Hardware acceleration enabled: " + m_hardwareAccelerationType, "success");
+        } else if (enabled && !m_hardwareAccelerationAvailable) {
+            emit debugMessage("Hardware acceleration requested but not available", "warning");
+            m_hardwareAccelerationEnabled = false;
+            emit hardwareAccelerationEnabledChanged();
+        } else {
+            emit debugMessage("Hardware acceleration disabled", "info");
+        }
+    }
+}
+
+void VideoCompressor::checkFFmpeg()
+{
+    emit debugMessage("Checking FFmpeg availability...", "info");
+    
+    QProcess process;
+    process.start("ffmpeg", QStringList() << "-version");
+    process.waitForFinished(3000);
+    
+    m_ffmpegAvailable = (process.exitCode() == 0);
+    emit ffmpegAvailableChanged();
+    
+    if (m_ffmpegAvailable) {
+        QString version = QString::fromUtf8(process.readAllStandardOutput()).split('\n').first();
+        emit debugMessage("FFmpeg found: " + version, "success");
+        
+        // Check hardware acceleration after confirming FFmpeg works
+        checkHardwareAcceleration();
+    } else {
+        emit debugMessage("FFmpeg not found in PATH", "error");
+        m_hardwareAccelerationAvailable = false;
+        m_hardwareAccelerationType = "None";
+        emit hardwareAccelerationAvailableChanged();
+        emit hardwareAccelerationTypeChanged();
+    }
+}
+
+void VideoCompressor::checkHardwareAcceleration()
+{
+    emit debugMessage("Detecting hardware acceleration capabilities...", "info");
+    
+    // Reset hardware acceleration state
+    m_hardwareAccelerationAvailable = false;
+    m_hardwareAccelerationType = "None";
+    
+    // Check for NVIDIA NVENC (CUDA)
+    if (testCudaEncoding()) {
+        m_hardwareAccelerationAvailable = true;
+        m_hardwareAccelerationType = "NVIDIA NVENC (CUDA)";
+        emit debugMessage("NVIDIA NVENC hardware acceleration detected", "success");
+    }
+    // Check for Intel QuickSync if CUDA not available
+    else if (testQuickSyncEncoding()) {
+        m_hardwareAccelerationAvailable = true;
+        m_hardwareAccelerationType = "Intel QuickSync";
+        emit debugMessage("Intel QuickSync hardware acceleration detected", "success");
+    }
+    else {
+        emit debugMessage("No hardware acceleration available - will use software encoding", "warning");
+    }
+    
+    // Auto-enable if available
+    if (m_hardwareAccelerationAvailable) {
+        m_hardwareAccelerationEnabled = true;
+        emit hardwareAccelerationEnabledChanged();
+    }
+    
+    emit hardwareAccelerationAvailableChanged();
+    emit hardwareAccelerationTypeChanged();
+}
+
+bool VideoCompressor::testCudaEncoding()
+{
+    // First check if NVENC encoders are available
+    QProcess checkProcess;
+    checkProcess.start("ffmpeg", QStringList() << "-hide_banner" << "-encoders");
+    checkProcess.waitForFinished(5000);
+    
+    QString encoderOutput = QString::fromUtf8(checkProcess.readAllStandardOutput());
+    if (!encoderOutput.contains("h264_nvenc")) {
+        emit debugMessage("NVENC encoders not found in FFmpeg build", "info");
+        return false;
+    }
+    
+    // Test actual CUDA functionality with a quick encode
+    QProcess testProcess;
+    QString testFile = m_tempDir + "/test_cuda_temp.mp4";
+    
+    QStringList testArgs;
+    testArgs << "-y" << "-f" << "lavfi" 
+             << "-i" << "testsrc=duration=1:size=320x240:rate=1"
+             << "-c:v" << "h264_nvenc" 
+             << "-t" << "1"
+             << testFile;
+    
+    testProcess.start("ffmpeg", testArgs);
+    testProcess.waitForFinished(10000);
+    
+    bool testPassed = (testProcess.exitCode() == 0);
+    
+    if (!testPassed) {
+        QString errorOutput = QString::fromUtf8(testProcess.readAllStandardError());
+        emit debugMessage("CUDA test failed: " + errorOutput.split('\n').last().trimmed(), "info");
+    }
+    
+    // Cleanup test file
+    QFile::remove(testFile);
+    
+    return testPassed;
+}
+
+bool VideoCompressor::testQuickSyncEncoding()
+{
+    // Check if QuickSync encoders are available
+    QProcess checkProcess;
+    checkProcess.start("ffmpeg", QStringList() << "-hide_banner" << "-encoders");
+    checkProcess.waitForFinished(5000);
+    
+    QString encoderOutput = QString::fromUtf8(checkProcess.readAllStandardOutput());
+    if (!encoderOutput.contains("h264_qsv")) {
+        emit debugMessage("QuickSync encoders not found in FFmpeg build", "info");
+        return false;
+    }
+    
+    // Test actual QuickSync functionality
+    QProcess testProcess;
+    QString testFile = m_tempDir + "/test_qsv_temp.mp4";
+    
+    QStringList testArgs;
+    testArgs << "-y" << "-f" << "lavfi" 
+             << "-i" << "testsrc=duration=1:size=320x240:rate=1"
+             << "-c:v" << "h264_qsv" 
+             << "-t" << "1"
+             << testFile;
+    
+    testProcess.start("ffmpeg", testArgs);
+    testProcess.waitForFinished(10000);
+    
+    bool testPassed = (testProcess.exitCode() == 0);
+    
+    if (!testPassed) {
+        QString errorOutput = QString::fromUtf8(testProcess.readAllStandardError());
+        emit debugMessage("QuickSync test failed: " + errorOutput.split('\n').last().trimmed(), "info");
+    }
+    
+    // Cleanup test file
+    QFile::remove(testFile);
+    
+    return testPassed;
+}
+
+QString VideoCompressor::getHardwareEncoderName()
+{
+    if (!m_hardwareAccelerationEnabled || !m_hardwareAccelerationAvailable) {
+        return "libx264"; // Software encoder
+    }
+    
+    if (m_hardwareAccelerationType.contains("NVENC")) {
+        return "h264_nvenc";
+    } else if (m_hardwareAccelerationType.contains("QuickSync")) {
+        return "h264_qsv";
+    }
+    
+    return "libx264"; // Fallback to software
+}
+
+QString VideoCompressor::getHardwareAcceleratorFlag()
+{
+    if (!m_hardwareAccelerationEnabled || !m_hardwareAccelerationAvailable) {
+        return "";
+    }
+    
+    if (m_hardwareAccelerationType.contains("NVENC")) {
+        return "cuda";
+    } else if (m_hardwareAccelerationType.contains("QuickSync")) {
+        return "qsv";
+    }
+    
+    return "";
+}
+
 void VideoCompressor::startFFmpegProcess(const VideoItem &item, const QString &outputPath, bool isFirstPass)
 {
     // Cleanup previous process
@@ -298,9 +489,16 @@ void VideoCompressor::startFFmpegProcess(const VideoItem &item, const QString &o
         }
     });
     
-    // Build FFmpeg arguments properly without using string splitting
+    // Build FFmpeg arguments properly with hardware acceleration support
     QStringList args;
     int videoBitrate = calculateOptimalBitrate(item.durationSeconds, m_targetSizeMB);
+    QString encoderName = getHardwareEncoderName();
+    QString hwAccelFlag = getHardwareAcceleratorFlag();
+    
+    // Add hardware acceleration flag if available
+    if (!hwAccelFlag.isEmpty() && !isFirstPass) {
+        args << "-hwaccel" << hwAccelFlag;
+    }
     
     if (isFirstPass) {
         // First pass: analysis only, output to NULL/NUL
@@ -311,7 +509,7 @@ void VideoCompressor::startFFmpegProcess(const VideoItem &item, const QString &o
             "/dev/null";
 #endif
         args << "-i" << item.path
-             << "-c:v" << "libx264"
+             << "-c:v" << encoderName
              << "-b:v" << QString("%1k").arg(videoBitrate)
              << "-c:a" << "aac"
              << "-b:a" << "128k"
@@ -321,7 +519,7 @@ void VideoCompressor::startFFmpegProcess(const VideoItem &item, const QString &o
     } else {
         // Second pass: actual encoding with optimized settings
         args << "-i" << item.path
-             << "-c:v" << "libx264"
+             << "-c:v" << encoderName
              << "-b:v" << QString("%1k").arg(videoBitrate)
              << "-c:a" << "aac"
              << "-b:a" << "128k"
@@ -331,9 +529,10 @@ void VideoCompressor::startFFmpegProcess(const VideoItem &item, const QString &o
     }
     
     QString passType = isFirstPass ? "first" : "second";
-    emit debugMessage("Starting " + passType + " pass for: " + item.fileName, "info");
+    QString accelInfo = m_hardwareAccelerationEnabled ? QString(" (HW: %1)").arg(m_hardwareAccelerationType) : " (Software)";
+    emit debugMessage("Starting " + passType + " pass for: " + item.fileName + accelInfo, "info");
     
-    // Log the command for debugging (but don't include actual quotes)
+    // Log the command for debugging
     QString debugCmd = "ffmpeg";
     for (const QString &arg : args) {
         if (arg.contains(' ') || arg.contains('\\') || arg.contains('/')) {
@@ -474,25 +673,6 @@ void VideoCompressor::saveToFolder(const QUrl &folderUrl)
     } else {
         emit error("No videos were copied");
         emit debugMessage("Failed to save videos - no completed videos found", "error");
-    }
-}
-
-void VideoCompressor::checkFFmpeg()
-{
-    emit debugMessage("Checking FFmpeg availability...", "info");
-    
-    QProcess process;
-    process.start("ffmpeg", QStringList() << "-version");
-    process.waitForFinished(3000);
-    
-    m_ffmpegAvailable = (process.exitCode() == 0);
-    emit ffmpegAvailableChanged();
-    
-    if (m_ffmpegAvailable) {
-        QString version = QString::fromUtf8(process.readAllStandardOutput()).split('\n').first();
-        emit debugMessage("FFmpeg found: " + version, "success");
-    } else {
-        emit debugMessage("FFmpeg not found in PATH", "error");
     }
 }
 

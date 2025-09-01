@@ -140,3 +140,50 @@ bool ClipboardManager::isVideoFile(const QString &path) const
     QString suffix = fileInfo.suffix().toLower();
     return videoExtensions.contains(suffix);
 }
+
+QList<QUrl> ClipboardManager::getAllVideoUrls() const
+{
+    QList<QUrl> videoUrls;
+    const QMimeData *mimeData = m_clipboard->mimeData();
+    
+    // Check for URLs first
+    if (mimeData->hasUrls()) {
+        for (const QUrl &url : mimeData->urls()) {
+            if (url.isLocalFile()) {
+                if (isVideoFile(url.toLocalFile())) {
+                    videoUrls.append(url);
+                }
+            } else if (isVideoUrl(url.toString())) {
+                videoUrls.append(url);
+            }
+        }
+    }
+    
+    // If no URLs found, check for text that might be video URLs or file paths
+    if (videoUrls.isEmpty() && mimeData->hasText()) {
+        QString text = mimeData->text().trimmed();
+        
+        // Split by newlines in case multiple paths are in text
+        QStringList lines = text.split('\n', Qt::SkipEmptyParts);
+        
+        for (const QString &line : lines) {
+            QString trimmedLine = line.trimmed();
+            if (isVideoFile(trimmedLine)) {
+                videoUrls.append(QUrl::fromLocalFile(trimmedLine));
+            } else if (isVideoUrl(trimmedLine)) {
+                videoUrls.append(QUrl(trimmedLine));
+            }
+        }
+        
+        // If no lines worked, try the whole text as a single item
+        if (videoUrls.isEmpty()) {
+            if (isVideoFile(text)) {
+                videoUrls.append(QUrl::fromLocalFile(text));
+            } else if (isVideoUrl(text)) {
+                videoUrls.append(QUrl(text));
+            }
+        }
+    }
+    
+    return videoUrls;
+}

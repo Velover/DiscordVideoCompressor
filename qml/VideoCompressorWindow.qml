@@ -173,6 +173,58 @@ ApplicationWindow {
                 }
             }
 
+            Item {
+                width: 20
+            }
+
+            // Hardware Acceleration Checkbox
+            RowLayout {
+                spacing: 5
+
+                CheckBox {
+                    id: hwAccelCheckbox
+                    checked: videoCompressor.hardwareAccelerationEnabled
+                    enabled: videoCompressor.hardwareAccelerationAvailable && !videoCompressor.isCompressing
+
+                    onCheckedChanged: {
+                        videoCompressor.hardwareAccelerationEnabled = checked;
+                    }
+
+                    ToolTip.text: videoCompressor.hardwareAccelerationAvailable ? "Hardware acceleration using " + videoCompressor.hardwareAccelerationType : "Hardware acceleration not available"
+                    ToolTip.visible: hovered
+                }
+
+                Text {
+                    text: "Hardware Acceleration"
+                    color: videoCompressor.hardwareAccelerationAvailable ? "#000000" : "#888888"
+                }
+
+                Rectangle {
+                    width: 12
+                    height: 12
+                    radius: 6
+                    color: {
+                        if (!videoCompressor.hardwareAccelerationAvailable)
+                            return "#888888";
+                        return videoCompressor.hardwareAccelerationEnabled ? "#4CAF50" : "#FF9800";
+                    }
+
+                    ToolTip.text: {
+                        if (!videoCompressor.hardwareAccelerationAvailable) {
+                            return "Hardware acceleration not available";
+                        }
+                        return videoCompressor.hardwareAccelerationEnabled ? "Hardware acceleration enabled: " + videoCompressor.hardwareAccelerationType : "Hardware acceleration disabled";
+                    }
+                    ToolTip.visible: mouseArea.containsMouse
+
+                    MouseArea {
+                        id: mouseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                    }
+                }
+            }
+
             Button {
                 text: "Compress"
                 enabled: !videoCompressor.isCompressing && videoCompressor.totalCount > 0 && videoCompressor.ffmpegAvailable
@@ -290,6 +342,20 @@ ApplicationWindow {
         function onDebugMessage(message, type) {
             debugConsole.addMessage(message, type);
         }
+        function onHardwareAccelerationAvailableChanged() {
+            if (videoCompressor.hardwareAccelerationAvailable) {
+                debugConsole.addMessage("Hardware acceleration detected: " + videoCompressor.hardwareAccelerationType, "success");
+            } else {
+                debugConsole.addMessage("No hardware acceleration available", "warning");
+            }
+        }
+        function onHardwareAccelerationEnabledChanged() {
+            if (videoCompressor.hardwareAccelerationEnabled) {
+                debugConsole.addMessage("Hardware acceleration enabled", "success");
+            } else {
+                debugConsole.addMessage("Hardware acceleration disabled", "info");
+            }
+        }
     }
 
     // Keyboard shortcuts
@@ -297,10 +363,16 @@ ApplicationWindow {
         sequence: "Ctrl+V"
         onActivated: {
             if (clipboardManager.hasVideoUrl()) {
-                var url = clipboardManager.getVideoUrl();
-                if (url.toString() !== "") {
-                    videoCompressor.addVideo(url);
-                    debugConsole.addMessage("Added video from clipboard (Ctrl+V): " + url.toString(), "success");
+                var urls = clipboardManager.getAllVideoUrls();
+                if (urls.length > 0) {
+                    for (var i = 0; i < urls.length; i++) {
+                        videoCompressor.addVideo(urls[i]);
+                    }
+                    if (urls.length === 1) {
+                        debugConsole.addMessage("Added video from clipboard (Ctrl+V): " + urls[0].toString(), "success");
+                    } else {
+                        debugConsole.addMessage("Added " + urls.length + " videos from clipboard (Ctrl+V)", "success");
+                    }
                 }
             } else {
                 debugConsole.addMessage("No valid video URL found in clipboard", "warning");

@@ -41,6 +41,9 @@ class VideoCompressor : public QAbstractListModel
     Q_PROPERTY(bool ffmpegAvailable READ ffmpegAvailable NOTIFY ffmpegAvailableChanged)
     Q_PROPERTY(int completedCount READ completedCount NOTIFY completedCountChanged)
     Q_PROPERTY(int totalCount READ totalCount NOTIFY totalCountChanged)
+    Q_PROPERTY(bool hardwareAccelerationEnabled READ hardwareAccelerationEnabled WRITE setHardwareAccelerationEnabled NOTIFY hardwareAccelerationEnabledChanged)
+    Q_PROPERTY(bool hardwareAccelerationAvailable READ hardwareAccelerationAvailable NOTIFY hardwareAccelerationAvailableChanged)
+    Q_PROPERTY(QString hardwareAccelerationType READ hardwareAccelerationType NOTIFY hardwareAccelerationTypeChanged)
 
 public:
     enum Roles {
@@ -68,6 +71,10 @@ public:
     bool ffmpegAvailable() const { return m_ffmpegAvailable; }
     int completedCount() const { return m_completedCount; }
     int totalCount() const { return m_videos.size(); }
+    bool hardwareAccelerationEnabled() const { return m_hardwareAccelerationEnabled; }
+    void setHardwareAccelerationEnabled(bool enabled);
+    bool hardwareAccelerationAvailable() const { return m_hardwareAccelerationAvailable; }
+    QString hardwareAccelerationType() const { return m_hardwareAccelerationType; }
 
 public slots:
     void addVideo(const QUrl &url);
@@ -90,6 +97,9 @@ signals:
     void ffmpegInstallationRequested();
     void error(const QString &message);
     void debugMessage(const QString &message, const QString &type = "info");
+    void hardwareAccelerationEnabledChanged();
+    void hardwareAccelerationAvailableChanged();
+    void hardwareAccelerationTypeChanged();
 
 private slots:
     void processNextVideo();
@@ -107,6 +117,9 @@ private:
     QTimer *m_progressTimer;
     QString m_tempDir;
     bool m_isFirstPass; // Track if we're in first or second pass
+    bool m_hardwareAccelerationEnabled;
+    bool m_hardwareAccelerationAvailable;
+    QString m_hardwareAccelerationType;
     
     void generateThumbnail(VideoItem &item);
     QString formatFileSize(qint64 bytes);
@@ -118,6 +131,11 @@ private:
     int calculateOptimalBitrate(double durationSeconds, int targetSizeMB); // Add bitrate calculation
     void cleanupPassFiles(); // Add cleanup for pass files
     void startFFmpegProcess(const VideoItem &item, const QString &outputPath, bool isFirstPass);
+    void checkHardwareAcceleration(); // Add hardware acceleration detection
+    bool testCudaEncoding(); // Add CUDA test method
+    bool testQuickSyncEncoding(); // Add QuickSync test method
+    QString getHardwareEncoderName(); // Get appropriate hardware encoder
+    QString getHardwareAcceleratorFlag(); // Get hardware accelerator flag
 };
 
 #endif // VIDEOCOMPRESSOR_H

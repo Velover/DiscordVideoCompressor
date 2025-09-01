@@ -36,10 +36,12 @@ int main(int argc, char *argv[])
     
     // Auto-detect videos from clipboard on startup ONLY
     if (clipboardManager.hasVideoUrl()) {
-        QUrl url = clipboardManager.getVideoUrl();
-        if (url.isValid()) {
-            videoCompressor.addVideo(url);
-            qDebug() << "Auto-added video from clipboard on startup:" << url.toString();
+        QList<QUrl> urls = clipboardManager.getAllVideoUrls();
+        for (const QUrl &url : urls) {
+            if (url.isValid()) {
+                videoCompressor.addVideo(url);
+                qDebug() << "Auto-added video from clipboard on startup:" << url.toString();
+            }
         }
     }
     

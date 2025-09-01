@@ -87,7 +87,7 @@ Rectangle {
 
         // Remove button
         Button {
-            text: "✕"
+            text: "X"
             Layout.preferredWidth: 30
             Layout.preferredHeight: 30
             enabled: !videoCompressor.isCompressing

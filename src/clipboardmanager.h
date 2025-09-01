@@ -17,6 +17,7 @@ public:
 public slots:
     bool hasVideoUrl() const;
     QUrl getVideoUrl() const;
+    QList<QUrl> getAllVideoUrls() const; // Add method to get all video URLs
     QString getClipboardText() const;
     void disableAutoDetection(); // Add method to disable auto-detection
 
