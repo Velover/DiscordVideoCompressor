@@ -31,16 +31,13 @@ VideoCompressor::VideoCompressor(QObject *parent)
     , m_hardwareAccelerationType("None")
     , m_installProcess(nullptr) // Initialize install process
 {
-    // Use temp directory relative to executable
-    m_tempDir = QCoreApplication::applicationDirPath() + "/temp";
+    m_tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/VideoCompressor";
     
-    // Clean up any leftover temp files from previous runs
+    // Clean up temp files from previous sessions on startup
     cleanupTempFiles();
     
     // Create fresh temp directory
     QDir().mkpath(m_tempDir);
-    
-    emit debugMessage("Temp directory: " + m_tempDir, "info");
     
     connect(m_progressTimer, &QTimer::timeout, this, &VideoCompressor::onFFmpegProgress);
     
@@ -49,8 +46,8 @@ VideoCompressor::VideoCompressor(QObject *parent)
 
 VideoCompressor::~VideoCompressor()
 {
-    // Only clean up temp files on application exit
-    cleanupTempFiles();
+    // Don't cleanup temp files on exit - they may be needed for clipboard access
+    // cleanupTempFiles(); // Removed this line
 }
 
 int VideoCompressor::rowCount(const QModelIndex &parent) const
@@ -206,6 +203,11 @@ void VideoCompressor::startCompression()
         return;
     }
     
+    // Clean up any old temp files before starting new compression
+    emit debugMessage("Cleaning up old temporary files before compression...", "info");
+    cleanupTempFiles();
+    QDir().mkpath(m_tempDir); // Recreate temp directory
+    
     // Re-check FFmpeg availability before starting
     emit debugMessage("Re-checking FFmpeg availability before compression...", "info");
     
@@ -252,10 +254,6 @@ void VideoCompressor::processNextVideo()
         emit isCompressingChanged();
         emit compressionFinished();
         emit debugMessage("All videos processed successfully", "success");
-        
-        // Don't clean up temp files immediately - keep them for clipboard/save operations
-        emit debugMessage("Compression batch completed. Temp files preserved for export operations.", "info");
-        
         return;
     }
     
@@ -285,9 +283,6 @@ void VideoCompressor::processNextVideo()
     }
     
     updateVideoStatus(m_currentVideoIndex, VideoStatus::Compressing, "Starting compression (Pass 1/2)...", 0);
-    
-    // Ensure temp directory exists
-    QDir().mkpath(m_tempDir);
     
     // Generate output path with temp prefix
     QString baseName = QFileInfo(item.path).baseName();
@@ -731,35 +726,9 @@ void VideoCompressor::onFFmpegProgress()
 void VideoCompressor::copyToClipboard()
 {
     QStringList completedPaths;
-    
-    // Create an output directory for clipboard files
-    QString outputDir = QCoreApplication::applicationDirPath() + "/output";
-    QDir().mkpath(outputDir);
-    
-    emit debugMessage("Preparing files for clipboard copy to: " + outputDir, "info");
-    
     for (const auto &item : m_videos) {
-        if (item.status == VideoStatus::Completed) {
-            // For compressed videos, copy from temp to output directory
-            QString sourceFile = item.outputPath;
-            QString fileName = QFileInfo(item.fileName).baseName() + "_compressed.mp4";
-            QString targetPath = outputDir + "/" + fileName;
-            
-            // Remove existing file if it exists
-            if (QFile::exists(targetPath)) {
-                QFile::remove(targetPath);
-            }
-            
-            if (QFile::copy(sourceFile, targetPath)) {
-                completedPaths.append(targetPath);
-                emit debugMessage("Copied compressed file: " + fileName, "info");
-            } else {
-                emit debugMessage("Failed to copy compressed file: " + fileName, "warning");
-            }
-        } else if (item.status == VideoStatus::AlreadyOptimal) {
-            // For already optimal videos, use original file
-            completedPaths.append(item.path);
-            emit debugMessage("Using original file (already optimal): " + item.fileName, "info");
+        if (item.status == VideoStatus::Completed || item.status == VideoStatus::AlreadyOptimal) {
+            completedPaths.append(item.outputPath);
         }
     }
     
@@ -780,17 +749,7 @@ void VideoCompressor::copyToClipboard()
     clipboard->setMimeData(mimeData);
     
     emit debugMessage("Copied " + QString::number(completedPaths.size()) + " videos to clipboard", "success");
-    emit debugMessage("Files available in: " + outputDir, "info");
-    
-    // Log the actual paths for debugging
-    for (const QString &path : completedPaths) {
-        QFileInfo info(path);
-        if (info.exists()) {
-            emit debugMessage("✓ " + info.fileName() + " (" + formatFileSize(info.size()) + ")", "info");
-        } else {
-            emit debugMessage("✗ " + info.fileName() + " (file not found)", "error");
-        }
-    }
+    emit debugMessage("Paths copied: " + completedPaths.join(", "), "info");
 }
 
 void VideoCompressor::saveToFolder(const QUrl &folderUrl)
@@ -810,55 +769,20 @@ void VideoCompressor::saveToFolder(const QUrl &folderUrl)
     }
     
     int copiedCount = 0;
-    int failedCount = 0;
-    
     for (const auto &item : m_videos) {
-        if (item.status == VideoStatus::Completed) {
-            // For compressed videos, copy from temp location
-            QString sourceFile = item.outputPath;
-            QString fileName = QFileInfo(item.fileName).baseName() + "_compressed.mp4";
-            QString targetPath = targetDir.filePath(fileName);
-            
-            // Remove existing file if it exists
-            if (QFile::exists(targetPath)) {
-                QFile::remove(targetPath);
-            }
-            
-            if (QFile::copy(sourceFile, targetPath)) {
+        if (item.status == VideoStatus::Completed || item.status == VideoStatus::AlreadyOptimal) {
+            QString targetPath = targetDir.filePath(QFileInfo(item.outputPath).fileName());
+            if (QFile::copy(item.outputPath, targetPath)) {
                 copiedCount++;
-                emit debugMessage("Saved: " + fileName, "success");
-            } else {
-                failedCount++;
-                emit debugMessage("Failed to save: " + fileName, "error");
-            }
-        } else if (item.status == VideoStatus::AlreadyOptimal) {
-            // For already optimal videos, copy original file
-            QString fileName = item.fileName;
-            QString targetPath = targetDir.filePath(fileName);
-            
-            // Remove existing file if it exists
-            if (QFile::exists(targetPath)) {
-                QFile::remove(targetPath);
-            }
-            
-            if (QFile::copy(item.path, targetPath)) {
-                copiedCount++;
-                emit debugMessage("Saved (already optimal): " + fileName, "success");
-            } else {
-                failedCount++;
-                emit debugMessage("Failed to save: " + fileName, "error");
             }
         }
     }
     
     if (copiedCount > 0) {
         emit debugMessage("Successfully saved " + QString::number(copiedCount) + " videos to " + folderPath, "success");
-        if (failedCount > 0) {
-            emit debugMessage("Failed to save " + QString::number(failedCount) + " videos", "warning");
-        }
     } else {
         emit error("No videos were copied");
-        emit debugMessage("Failed to save videos - no completed videos found or all operations failed", "error");
+        emit debugMessage("Failed to save videos - no completed videos found", "error");
     }
 }
 
@@ -997,44 +921,9 @@ void VideoCompressor::onInstallProcessFinished(int exitCode, QProcess::ExitStatu
     m_installProcess = nullptr;
 }
 
-void VideoCompressor::cleanupTempFiles()
-{
-    QDir tempDir(m_tempDir);
-    if (tempDir.exists()) {
-        emit debugMessage("Cleaning up temp directory: " + m_tempDir, "info");
-        
-        // Get list of files before removal for logging
-        QStringList files = tempDir.entryList(QDir::Files);
-        if (!files.isEmpty()) {
-            emit debugMessage("Removing " + QString::number(files.size()) + " temp files", "info");
-        }
-        
-        // Remove all files and subdirectories
-        bool removed = tempDir.removeRecursively();
-        if (removed) {
-            emit debugMessage("Temp directory cleaned successfully", "success");
-        } else {
-            emit debugMessage("Warning: Could not completely clean temp directory", "warning");
-        }
-    }
-    
-    // Also clean up any FFmpeg pass files in the current directory
-    QDir currentDir(".");
-    QStringList passFiles = currentDir.entryList(QStringList() << "ffmpeg2pass-*.log*", QDir::Files);
-    
-    if (!passFiles.isEmpty()) {
-        emit debugMessage("Cleaning up " + QString::number(passFiles.size()) + " FFmpeg pass files", "info");
-        for (const QString &file : passFiles) {
-            if (QFile::remove(file)) {
-                emit debugMessage("Removed pass file: " + file, "info");
-            }
-        }
-    }
-}
-
 void VideoCompressor::cleanupPassFiles()
 {
-    // Clean up FFmpeg two-pass log files from temp directory
+    // Clean up FFmpeg two-pass log files
     QDir tempDir(m_tempDir);
     QStringList passFiles = tempDir.entryList(QStringList() << "ffmpeg2pass-*.log*", QDir::Files);
     
@@ -1054,6 +943,62 @@ void VideoCompressor::cleanupPassFiles()
             emit debugMessage("Cleaned up pass file: " + file, "info");
         }
     }
+}
+
+void VideoCompressor::cleanupTempFiles()
+{
+    QDir tempDir(m_tempDir);
+    if (tempDir.exists()) {
+        int fileCount = tempDir.entryList(QDir::Files | QDir::NoDotAndDotDot).count();
+        if (fileCount > 0) {
+            emit debugMessage("Cleaning up " + QString::number(fileCount) + " temporary files...", "info");
+        }
+        tempDir.removeRecursively();
+    }
+}
+
+QString VideoCompressor::formatFileSize(qint64 bytes)
+{
+    const qint64 kb = 1024;
+    const qint64 mb = kb * 1024;
+    const qint64 gb = mb * 1024;
+    
+    if (bytes >= gb) {
+        return QString::number(bytes / gb, 'f', 1) + " GB";
+    } else if (bytes >= mb) {
+        return QString::number(bytes / mb, 'f', 1) + " MB";
+    } else if (bytes >= kb) {
+        return QString::number(bytes / kb, 'f', 1) + " KB";
+    } else {
+        return QString::number(bytes) + " B";
+    }
+}
+
+bool VideoCompressor::isVideoFile(const QString &path)
+{
+    QStringList videoExtensions = {
+        "mp4", "avi", "mkv", "mov", "wmv", "flv", 
+        "webm", "m4v", "3gp", "ogv", "mpg", "mpeg",
+        "ts", "m2ts", "asf", "rm", "rmvb"
+    };
+    
+    QString suffix = QFileInfo(path).suffix().toLower();
+    return videoExtensions.contains(suffix);
+}
+
+void VideoCompressor::updateVideoStatus(int index, VideoStatus status, const QString &statusText, int progress)
+{
+    if (index < 0 || index >= m_videos.size()) {
+        return;
+    }
+    
+    VideoItem &item = m_videos[index];
+    item.status = status;
+    item.statusText = statusText;
+    item.progress = progress;
+    
+    QModelIndex idx = this->index(index);
+    emit dataChanged(idx, idx, {StatusRole, StatusTextRole, ProgressRole});
 }
 
 void VideoCompressor::generateThumbnail(VideoItem &item)
@@ -1094,9 +1039,6 @@ void VideoCompressor::generateThumbnail(VideoItem &item)
         }
         return;
     }
-    
-    // Ensure temp directory exists
-    QDir().mkpath(m_tempDir);
     
     QString thumbnailPath = m_tempDir + "/" + QFileInfo(item.path).baseName() + "_thumb.jpg";
     
@@ -1178,75 +1120,6 @@ void VideoCompressor::createPlaceholderThumbnail(VideoItem &item)
     item.thumbnail = placeholder;
 }
 
-QString VideoCompressor::getFFmpegCommand(const VideoItem &item, const QString &outputPath, bool isFirstPass)
-{
-    // This method is now only used for debugging/logging purposes
-    // The actual command building is done in startFFmpegProcess
-    int videoBitrate = calculateOptimalBitrate(item.durationSeconds, m_targetSizeMB);
-    
-    if (isFirstPass) {
-        QString nullOutput = 
-#ifdef Q_OS_WIN
-            "NUL";
-#else
-            "/dev/null";
-#endif
-        return QString("-i \"%1\" -c:v libx264 -b:v %2k -c:a aac -b:a 128k -pass 1 -f mp4 -y \"%3\"")
-               .arg(item.path)
-               .arg(videoBitrate)
-               .arg(nullOutput);
-    } else {
-        return QString("-i \"%1\" -c:v libx264 -b:v %2k -c:a aac -b:a 128k -pass 2 -movflags +faststart -y \"%3\"")
-               .arg(item.path)
-               .arg(videoBitrate)
-               .arg(outputPath);
-    }
-}
-
-QString VideoCompressor::formatFileSize(qint64 bytes)
-{
-    const qint64 kb = 1024;
-    const qint64 mb = kb * 1024;
-    const qint64 gb = mb * 1024;
-    
-    if (bytes >= gb) {
-        return QString::number(bytes / gb, 'f', 1) + " GB";
-    } else if (bytes >= mb) {
-        return QString::number(bytes / mb, 'f', 1) + " MB";
-    } else if (bytes >= kb) {
-        return QString::number(bytes / kb, 'f', 1) + " KB";
-    } else {
-        return QString::number(bytes) + " B";
-    }
-}
-
-bool VideoCompressor::isVideoFile(const QString &path)
-{
-    QStringList videoExtensions = {
-        "mp4", "avi", "mkv", "mov", "wmv", "flv", 
-        "webm", "m4v", "3gp", "ogv", "mpg", "mpeg",
-        "ts", "m2ts", "asf", "rm", "rmvb"
-    };
-    
-    QString suffix = QFileInfo(path).suffix().toLower();
-    return videoExtensions.contains(suffix);
-}
-
-void VideoCompressor::updateVideoStatus(int index, VideoStatus status, const QString &statusText, int progress)
-{
-    if (index < 0 || index >= m_videos.size()) {
-        return;
-    }
-    
-    VideoItem &item = m_videos[index];
-    item.status = status;
-    item.statusText = statusText;
-    item.progress = progress;
-    
-    QModelIndex idx = this->index(index);
-    emit dataChanged(idx, idx, {StatusRole, StatusTextRole, ProgressRole});
-}
-
 double VideoCompressor::getVideoDuration(const QString &filePath)
 {
     if (!m_ffmpegAvailable) {
@@ -1326,3 +1199,27 @@ int VideoCompressor::calculateOptimalBitrate(double durationSeconds, int targetS
     return videoBitrate;
 }
 
+QString VideoCompressor::getFFmpegCommand(const VideoItem &item, const QString &outputPath, bool isFirstPass)
+{
+    // This method is now only used for debugging/logging purposes
+    // The actual command building is done in startFFmpegProcess
+    int videoBitrate = calculateOptimalBitrate(item.durationSeconds, m_targetSizeMB);
+    
+    if (isFirstPass) {
+        QString nullOutput = 
+#ifdef Q_OS_WIN
+            "NUL";
+#else
+            "/dev/null";
+#endif
+        return QString("-i \"%1\" -c:v libx264 -b:v %2k -c:a aac -b:a 128k -pass 1 -f mp4 -y \"%3\"")
+               .arg(item.path)
+               .arg(videoBitrate)
+               .arg(nullOutput);
+    } else {
+        return QString("-i \"%1\" -c:v libx264 -b:v %2k -c:a aac -b:a 128k -pass 2 -movflags +faststart -y \"%3\"")
+               .arg(item.path)
+               .arg(videoBitrate)
+               .arg(outputPath);
+    }
+}

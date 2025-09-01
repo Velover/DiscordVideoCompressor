@@ -290,7 +290,7 @@ ApplicationWindow {
                 enabled: videoCompressor.completedCount > 0
                 onClicked: {
                     videoCompressor.copyToClipboard();
-                    debugConsole.addMessage("Preparing " + videoCompressor.completedCount + " videos for clipboard...", "info");
+                    debugConsole.addMessage("Copied " + videoCompressor.completedCount + " videos to clipboard");
                 }
             }
 
@@ -298,29 +298,13 @@ ApplicationWindow {
                 text: "Save As..."
                 enabled: videoCompressor.completedCount > 0
                 onClicked: {
-                    debugConsole.addMessage("Opening folder selection dialog...", "info");
+                    debugConsole.addMessage("Opening folder selection dialog...");
                     folderDialog.open();
                 }
             }
 
             Item {
                 Layout.fillWidth: true
-            }
-
-            // Add info about output location
-            Text {
-                text: "Output: ./output/"
-                color: "#666666"
-                font.pixelSize: 10
-                visible: videoCompressor.completedCount > 0
-                ToolTip.text: "Compressed videos are stored in the output directory for easy access"
-                ToolTip.visible: outputMouseArea.containsMouse
-
-                MouseArea {
-                    id: outputMouseArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                }
             }
         }
     }
