@@ -70,7 +70,8 @@ QVariant VideoCompressor::data(const QModelIndex &index, int role) const
     case ProgressRole:
         return item.progress;
     case ThumbnailRole:
-        return item.thumbnail;
+        // Convert QPixmap to QImage for QML
+        return QVariant::fromValue(item.thumbnail.toImage());
     default:
         return QVariant();
     }
@@ -1024,6 +1025,19 @@ void VideoCompressor::generateThumbnail(VideoItem &item)
             if (thumbnail.load(thumbnailPath)) {
                 item.thumbnail = thumbnail;
                 emit debugMessage("Thumbnail generated successfully for: " + item.fileName, "success");
+                
+                // Notify QML that the thumbnail has changed
+                int itemIndex = -1;
+                for (int i = 0; i < m_videos.size(); ++i) {
+                    if (m_videos[i].path == item.path) {
+                        itemIndex = i;
+                        break;
+                    }
+                }
+                if (itemIndex >= 0) {
+                    QModelIndex idx = index(itemIndex);
+                    emit dataChanged(idx, idx, {ThumbnailRole});
+                }
             } else {
                 emit debugMessage("Failed to load generated thumbnail for: " + item.fileName, "warning");
                 createPlaceholderThumbnail(item);

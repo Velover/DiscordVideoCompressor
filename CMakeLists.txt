@@ -73,7 +73,6 @@ qt_add_resources(video_compressor "qml_resources"
     FILES
         qml/VideoCompressorWindow.qml
         qml/VideoListItem.qml
-        qml/FFmpegInstallDialog.qml
         qml/DebugConsole.qml
 )
 

@@ -16,18 +16,57 @@ Rectangle {
         anchors.margins: 10
         spacing: 15
 
-        // Thumbnail placeholder
+        // Thumbnail
         Rectangle {
-            Layout.preferredWidth: 60
-            Layout.preferredHeight: 40
+            Layout.preferredWidth: 120
+            Layout.preferredHeight: 68
             color: "#e0e0e0"
             border.color: "#cccccc"
             border.width: 1
 
+            Image {
+                id: thumbnailImage
+                anchors.fill: parent
+                source: thumbnail ? "image://thumbnail/" + Math.random() : "" // Force refresh
+                cache: false
+                fillMode: Image.PreserveAspectFit
+                visible: thumbnail !== undefined && thumbnail !== null
+
+                onStatusChanged: {
+                    if (status === Image.Error) {
+                        console.log("Thumbnail loading failed for:", fileName);
+                    }
+                }
+            }
+
+            // Fallback when no thumbnail available
             Text {
                 anchors.centerIn: parent
                 text: "📹"
-                font.pixelSize: 20
+                font.pixelSize: 24
+                visible: !thumbnailImage.visible
+            }
+
+            // File extension overlay
+            Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.right: parent.right
+                width: 30
+                height: 15
+                color: "#000000"
+                opacity: 0.7
+                visible: thumbnailImage.visible
+
+                Text {
+                    anchors.centerIn: parent
+                    text: {
+                        var ext = fileName.split('.').pop().toUpperCase();
+                        return ext.length <= 4 ? ext : "VID";
+                    }
+                    color: "white"
+                    font.pixelSize: 8
+                    font.bold: true
+                }
             }
         }
 
@@ -85,13 +124,34 @@ Rectangle {
             }
         }
 
-        // Remove button
         Button {
-            text: "X"
             Layout.preferredWidth: 30
             Layout.preferredHeight: 30
+            Layout.alignment: Qt.AlignVCenter
             enabled: !videoCompressor.isCompressing
+            font.pixelSize: 14
+            font.bold: true
+
+            background: Rectangle {
+                color: parent.hovered ? "#ff4444" : "#cccccc"
+                radius: 4
+                border.color: "#999999"
+                border.width: 1
+            }
+
+            contentItem: Text {
+                anchors.fill: parent                    // Fill the entire button area
+                horizontalAlignment: Text.AlignHCenter  // Center text horizontally
+                verticalAlignment: Text.AlignVCenter    // Center text vertically
+                text: "X"
+                color: parent.hovered ? "white" : "#666666"
+                font: parent.font
+            }
+
             onClicked: root.removeRequested(index)
+
+            ToolTip.text: "Remove video"
+            ToolTip.visible: hovered
         }
     }
 }

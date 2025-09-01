@@ -51,14 +51,6 @@ ApplicationWindow {
         standardButtons: Dialog.Ok
     }
 
-    // FFmpeg installation dialog
-    FFmpegInstallDialog {
-        id: ffmpegInstallDialog
-        onInstallationCompleted: {
-            videoCompressor.checkFFmpeg();
-        }
-    }
-
     // Drag and drop area
     DropArea {
         id: dropArea
@@ -324,10 +316,6 @@ ApplicationWindow {
             errorDialog.text = message;
             errorDialog.open();
             debugConsole.addMessage("ERROR: " + message, "error");
-        }
-        function onFfmpegInstallationRequested() {
-            debugConsole.addMessage("FFmpeg installation requested");
-            ffmpegInstallDialog.open();
         }
         function onCompressionFinished() {
             debugConsole.addMessage("Compression batch completed", "success");
