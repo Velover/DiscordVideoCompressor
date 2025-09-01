@@ -52,16 +52,16 @@ A Qt6-based video compression application with drag-and-drop support, clipboard 
 
 2. **Run Build Script**:
 
-   **Release Build (default)**:
+   **Release Build**:
+
+   ```powershell
+   .\Scripts\build.ps1 -BuildType Release
+   ```
+
+   **Debug Build (default)**:
 
    ```powershell
    .\Scripts\build.ps1
-   ```
-
-   **Debug Build**:
-
-   ```powershell
-   .\Scripts\build.ps1 -BuildType Debug
    ```
 
 3. **Manual Build** (alternative):
