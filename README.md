@@ -1,44 +1,67 @@
-# Video Player
+# Video Compressor
 
-A Qt6-based video player application with drag-and-drop support and clipboard integration.
+A Qt6-based video compression application with drag-and-drop support, clipboard integration, and FFmpeg automatic installation.
 
 ## Features
 
-- **Drag and Drop**: Drop video files directly onto the player window
+- **Drag and Drop**: Drop video files directly onto the compressor window
 - **Clipboard Integration**: Paste video URLs or file paths with Ctrl+V
 - **Multiple Video Formats**: Supports MP4, AVI, MKV, MOV, WMV, FLV, WebM, and more
-- **Full Screen Mode**: Double-click video or press F11 for full screen
-- **Video Controls**: Play, pause, stop, seek, volume control
-- **Static Build**: Self-contained executable with no external Qt dependencies
+- **Smart Compression**: Automatically calculates optimal bitrates for target file sizes
+- **Hardware Acceleration**: Supports NVIDIA NVENC and Intel QuickSync when available
+- **FFmpeg Auto-Install**: One-click FFmpeg installation with administrator privileges
+- **Batch Processing**: Compress multiple videos in sequence
+- **Smart Temp Cleanup**: Preserves clipboard files while cleaning unused temporary files
+- **Real-time Progress**: Live progress tracking with two-pass encoding
+- **Thumbnail Generation**: Automatic video thumbnails for easy identification
 
 ## Supported Video Formats
+
+### Input Formats
 
 - MP4, AVI, MKV, MOV, WMV, FLV
 - WebM, M4V, 3GP, OGV, MPG, MPEG
 - TS, M2TS, ASF, RM, RMVB
 
+### Output Format
+
+- MP4 with H.264 video and AAC audio
+
+## Target Sizes
+
+- **10 MB**: Ideal for messaging apps and quick sharing
+- **50 MB**: Higher quality for email attachments and cloud storage
+
 ## Building
 
 ### Prerequisites
 
-- Qt 6.9.2 with static libraries
+- Qt 6.9.2 with dynamic libraries
 - CMake 3.16 or higher
 - MinGW-w64 compiler
 - PowerShell (for build script)
 
 ### Build Instructions
 
-1. **Configure Qt Static Build Path**:
-   Update the Qt path in `CMakeLists.txt` to point to your Qt static installation:
+1. **Configure Qt Path**:
+   Update the Qt path in `CMakeLists.txt` to point to your Qt installation:
 
    ```cmake
-   set(CMAKE_PREFIX_PATH "C:/Qt/6.9.2/Static/mingw_64")
+   set(CMAKE_PREFIX_PATH "C:/Qt/6.9.2/mingw_64")
    ```
 
 2. **Run Build Script**:
 
+   **Release Build (default)**:
+
    ```powershell
    .\Scripts\build.ps1
+   ```
+
+   **Debug Build**:
+
+   ```powershell
+   .\Scripts\build.ps1 -BuildType Debug
    ```
 
 3. **Manual Build** (alternative):
@@ -47,81 +70,162 @@ A Qt6-based video player application with drag-and-drop support and clipboard in
    cmake --build build --config Release
    ```
 
-The executable will be created in the `out/` directory.
+The executable and all dependencies will be created in the `out/` directory.
 
 ## Usage
 
-### Opening Videos
+### Adding Videos
 
-1. **File Menu**: Use `File > Open...` or `Ctrl+O`
+1. **File Dialog**: Click "Add Videos" button
 2. **Drag and Drop**: Drag video files from Windows Explorer
-3. **Clipboard**: Copy a video file path or URL, then use `File > Paste from Clipboard` or `Ctrl+V`
+3. **Clipboard**: Copy video file paths, then use `Ctrl+V`
 
-### Keyboard Shortcuts
+### Compression Process
 
-- `Space`: Play/Pause
+1. **Add Videos**: Use any of the methods above to add videos to the list
+2. **Select Target Size**: Choose between 10 MB or 50 MB
+3. **Configure Hardware Acceleration**: Enable if available for faster processing
+4. **Start Compression**: Click "Compress" to begin batch processing
+5. **Monitor Progress**: Watch real-time progress for each video
+
+### Exporting Results
+
+- **Copy to Clipboard**: Copy compressed videos to system clipboard for easy pasting
+- **Save to Folder**: Choose a destination folder to save all compressed videos
+
+### FFmpeg Installation
+
+If FFmpeg is not detected:
+
+1. Click the "Install" button next to FFmpeg status
+2. Accept the User Account Control (UAC) prompt
+3. Wait for automatic installation to complete
+4. FFmpeg will be installed system-wide in `C:\Program Files\FFmpeg`
+
+## Hardware Acceleration
+
+The application automatically detects and configures:
+
+- **NVIDIA NVENC (CUDA)**: For NVIDIA GPUs with encoding support
+- **Intel QuickSync**: For Intel CPUs with integrated graphics
+- **Software Fallback**: Uses CPU-based encoding when hardware acceleration is unavailable
+
+## Smart Features
+
+### Intelligent Bitrate Calculation
+
+- Automatically calculates optimal video bitrates based on target size and video duration
+- Applies safety margins to ensure output stays under target size
+- Considers audio bitrate (128 kbps AAC) in calculations
+
+### Smart Temporary File Management
+
+- Preserves files currently in clipboard when cleaning temp folders
+- Cleans up on startup, compression start, and application exit
+- Only removes truly unused temporary files
+
+### Two-Pass Encoding
+
+- First pass: Analyzes video for optimal encoding parameters
+- Second pass: Performs actual encoding with optimized settings
+- Provides better quality and more accurate file size control
+
+## Keyboard Shortcuts
+
+- `Ctrl+V`: Paste videos from clipboard
 - `Ctrl+O`: Open file dialog
-- `Ctrl+V`: Paste from clipboard
-- `F11`: Toggle full screen
-- `Escape`: Exit full screen
-- `Ctrl+Q`: Quit application
-
-### Mouse Controls
-
-- **Single Click**: Play/Pause
-- **Double Click**: Toggle full screen
-- **Mouse Movement** (in full screen): Show controls temporarily
 
 ## Project Structure
 
 ```
-├── src/                    # Source code
-│   ├── main.cpp           # Application entry point
-│   ├── videoplayer.h/cpp  # Video player backend
-│   └── clipboardmanager.h/cpp # Clipboard handling
-├── qml/                   # QML user interface
-│   ├── VideoPlayerWindow.qml  # Main window
-│   └── VideoControls.qml      # Video controls component
+├── src/                           # Source code
+│   ├── main.cpp                  # Application entry point
+│   ├── videocompressor.h/cpp     # Video compression backend
+│   └── clipboardmanager.h/cpp    # Clipboard handling
+├── qml/                          # QML user interface
+│   ├── VideoCompressorWindow.qml # Main window
+│   ├── VideoListItem.qml         # Video list item component
+│   └── DebugConsole.qml          # Debug console component
 ├── Scripts/
-│   └── build.ps1          # Build script
-├── CMakeLists.txt         # CMake configuration
-└── README.md              # This file
+│   ├── build.ps1                 # Build script
+│   └── install-ffmpeg.ps1        # FFmpeg installation script
+├── CMakeLists.txt                # CMake configuration
+├── app.ico                       # Application icon
+└── README.md                     # This file
 ```
 
 ## Dependencies
 
-The application uses the following Qt modules:
+### Qt Modules
 
 - Qt6::Core
 - Qt6::Widgets
-- Qt6::Multimedia
-- Qt6::MultimediaWidgets
 - Qt6::Quick
 - Qt6::Qml
 - Qt6::QuickControls2
+- Qt6::Gui
+
+### External Dependencies
+
+- **FFmpeg**: Required for video processing (auto-installable)
+- **FFprobe**: Required for video analysis (included with FFmpeg)
+
+## FFmpeg Installation Details
+
+The application includes an automated FFmpeg installer (`install-ffmpeg.ps1`) that:
+
+- Downloads FFmpeg essentials build (~30MB 7z format)
+- Extracts using system 7-Zip, portable 7-Zip, or ZIP fallback
+- Installs to `C:\Program Files\FFmpeg` (system-wide)
+- Automatically adds FFmpeg to system PATH
+- Supports forced reinstallation with `-Force` parameter
 
 ## Troubleshooting
 
-### Static Build Issues
+### FFmpeg Issues
 
-If you encounter issues with static builds:
+If FFmpeg installation fails:
 
-1. Ensure you have Qt built with static libraries
-2. Verify the `CMAKE_PREFIX_PATH` points to the correct Qt installation
-3. Check that all required Qt plugins are available in the static build
+1. Run PowerShell as Administrator
+2. Execute: `.\Scripts\install-ffmpeg.ps1`
+3. Restart the application after installation
 
-### Video Playback Issues
+### Hardware Acceleration Issues
 
-- Ensure Windows has the necessary codec support
-- Try different video formats if one doesn't work
-- Check that the video file is not corrupted
+If hardware acceleration isn't detected:
 
-### Clipboard Detection
+- **NVIDIA**: Ensure latest GPU drivers are installed
+- **Intel**: Enable integrated graphics in BIOS/UEFI
+- **Software Fallback**: Compression will work but may be slower
 
-The clipboard manager detects:
+### Compression Quality
 
-- Local video file paths
-- Video URLs from common streaming services
-- Direct video file URLs
+For better quality:
 
-If clipboard paste doesn't work, ensure the clipboard contains a valid video file path or URL.
+- Use 50 MB target for higher quality
+- Ensure source video resolution isn't too high for target size
+- Consider that very short videos may not compress significantly
+
+### Temporary File Issues
+
+The application automatically manages temporary files:
+
+- Startup: Cleans old files while preserving clipboard content
+- Compression: Smart cleanup before processing
+- Exit: Preserves clipboard files, removes others
+
+### Debug Console
+
+Use the expandable debug console at the bottom to:
+
+- Monitor compression progress
+- View detailed FFmpeg output
+- Troubleshoot installation issues
+- Copy debug information for support
+
+## Performance Tips
+
+1. **Use Hardware Acceleration**: Significantly faster when available
+2. **Close Other Applications**: Reduces competition for system resources
+3. **SSD Storage**: Faster temporary file operations
+4. **Adequate RAM**: 8GB+ recommended for large video files
