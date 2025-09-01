@@ -14,6 +14,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Quick
     Qml
     QuickControls2
+    Gui
 )
 
 qt_standard_project_setup()
@@ -76,11 +77,12 @@ qt_add_resources(video_compressor "qml_resources"
         qml/DebugConsole.qml
 )
 
-# Link Qt libraries
+# Link Qt libraries (added Gui for QPainter)
 target_link_libraries(video_compressor PRIVATE 
     Qt6::Core
     Qt6::Widgets
     Qt6::Quick
     Qt6::Qml
     Qt6::QuickControls2
+    Qt6::Gui
 )

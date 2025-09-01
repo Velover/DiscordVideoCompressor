@@ -135,7 +135,10 @@ ApplicationWindow {
                 Button {
                     text: "Install"
                     visible: !videoCompressor.ffmpegAvailable
-                    onClicked: ffmpegInstallDialog.open()
+                    onClicked: {
+                        debugConsole.addMessage("Starting FFmpeg installation with administrator privileges...", "info");
+                        videoCompressor.installFFmpegWithElevation();
+                    }
                 }
             }
         }

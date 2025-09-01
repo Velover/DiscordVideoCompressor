@@ -10,6 +10,11 @@
 #include <QFileDialog>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QPainter>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <shellapi.h>
+#endif
 
 VideoCompressor::VideoCompressor(QObject *parent)
     : QAbstractListModel(parent)
@@ -23,6 +28,7 @@ VideoCompressor::VideoCompressor(QObject *parent)
     , m_hardwareAccelerationEnabled(false)
     , m_hardwareAccelerationAvailable(false)
     , m_hardwareAccelerationType("None")
+    , m_installProcess(nullptr) // Initialize install process
 {
     m_tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/VideoCompressor";
     QDir().mkpath(m_tempDir);
@@ -165,14 +171,37 @@ void VideoCompressor::removeVideo(int index)
 
 void VideoCompressor::startCompression()
 {
-    if (m_isCompressing || !m_ffmpegAvailable || m_videos.isEmpty()) {
-        if (m_isCompressing) {
-            emit debugMessage("Compression already in progress", "warning");
-        } else if (!m_ffmpegAvailable) {
-            emit debugMessage("FFmpeg not available", "error");
-        } else {
-            emit debugMessage("No videos to compress", "warning");
-        }
+    if (m_isCompressing) {
+        emit debugMessage("Compression already in progress", "warning");
+        return;
+    }
+    
+    if (!m_ffmpegAvailable) {
+        emit debugMessage("Cannot start compression: FFmpeg/FFprobe not available", "error");
+        emit debugMessage("Please install FFmpeg and restart the application", "error");
+        return;
+    }
+    
+    if (m_videos.isEmpty()) {
+        emit debugMessage("No videos to compress", "warning");
+        return;
+    }
+    
+    // Re-check FFmpeg availability before starting
+    emit debugMessage("Re-checking FFmpeg availability before compression...", "info");
+    
+    QProcess testProcess;
+    testProcess.start("ffmpeg", QStringList() << "-version");
+    bool canStart = testProcess.waitForStarted(3000);
+    if (canStart) {
+        testProcess.waitForFinished(3000);
+    }
+    
+    if (!canStart || testProcess.exitCode() != 0) {
+        emit debugMessage("FFmpeg check failed before compression", "error");
+        emit debugMessage("FFmpeg may have been uninstalled or PATH changed", "error");
+        m_ffmpegAvailable = false;
+        emit ffmpegAvailableChanged();
         return;
     }
     
@@ -267,21 +296,81 @@ void VideoCompressor::checkFFmpeg()
 {
     emit debugMessage("Checking FFmpeg availability...", "info");
     
-    QProcess process;
-    process.start("ffmpeg", QStringList() << "-version");
-    process.waitForFinished(3000);
+    // Check both ffmpeg and ffprobe
+    QProcess ffmpegProcess;
+    ffmpegProcess.start("ffmpeg", QStringList() << "-version");
+    bool ffmpegStarted = ffmpegProcess.waitForStarted(3000);
+    if (ffmpegStarted) {
+        ffmpegProcess.waitForFinished(5000);
+    }
     
-    m_ffmpegAvailable = (process.exitCode() == 0);
+    QProcess ffprobeProcess;
+    ffprobeProcess.start("ffprobe", QStringList() << "-version");
+    bool ffprobeStarted = ffprobeProcess.waitForStarted(3000);
+    if (ffprobeStarted) {
+        ffprobeProcess.waitForFinished(5000);
+    }
+    
+    bool ffmpegAvailable = ffmpegStarted && (ffmpegProcess.exitCode() == 0);
+    bool ffprobeAvailable = ffprobeStarted && (ffprobeProcess.exitCode() == 0);
+    
+    emit debugMessage("FFmpeg process started: " + QString(ffmpegStarted ? "Yes" : "No"), "info");
+    emit debugMessage("FFprobe process started: " + QString(ffprobeStarted ? "Yes" : "No"), "info");
+    
+    if (ffmpegStarted) {
+        emit debugMessage("FFmpeg exit code: " + QString::number(ffmpegProcess.exitCode()), "info");
+        if (ffmpegProcess.exitCode() != 0) {
+            QString ffmpegError = QString::fromUtf8(ffmpegProcess.readAllStandardError());
+            emit debugMessage("FFmpeg error output: " + ffmpegError, "warning");
+        }
+    }
+    
+    if (ffprobeStarted) {
+        emit debugMessage("FFprobe exit code: " + QString::number(ffprobeProcess.exitCode()), "info");
+        if (ffprobeProcess.exitCode() != 0) {
+            QString ffprobeError = QString::fromUtf8(ffprobeProcess.readAllStandardError());
+            emit debugMessage("FFprobe error output: " + ffprobeError, "warning");
+        }
+    }
+    
+    bool previouslyAvailable = m_ffmpegAvailable;
+    m_ffmpegAvailable = ffmpegAvailable && ffprobeAvailable;
     emit ffmpegAvailableChanged();
     
     if (m_ffmpegAvailable) {
-        QString version = QString::fromUtf8(process.readAllStandardOutput()).split('\n').first();
-        emit debugMessage("FFmpeg found: " + version, "success");
+        QString ffmpegVersion = QString::fromUtf8(ffmpegProcess.readAllStandardOutput()).split('\n').first();
+        QString ffprobeVersion = QString::fromUtf8(ffprobeProcess.readAllStandardOutput()).split('\n').first();
+        
+        emit debugMessage("FFmpeg found: " + ffmpegVersion, "success");
+        emit debugMessage("FFprobe found: " + ffprobeVersion, "success");
+        
+        // If FFmpeg was just installed (previously not available)
+        if (!previouslyAvailable) {
+            emit debugMessage("FFmpeg installation detected successfully!", "success");
+        }
         
         // Check hardware acceleration after confirming FFmpeg works
         checkHardwareAcceleration();
     } else {
-        emit debugMessage("FFmpeg not found in PATH", "error");
+        if (!ffmpegAvailable) {
+            if (!ffmpegStarted) {
+                emit debugMessage("FFmpeg not found in PATH - process failed to start", "error");
+                emit debugMessage("If you just installed FFmpeg, try restarting the application", "info");
+            } else {
+                emit debugMessage("FFmpeg found but returned error code " + QString::number(ffmpegProcess.exitCode()), "error");
+            }
+        }
+        if (!ffprobeAvailable) {
+            if (!ffprobeStarted) {
+                emit debugMessage("FFprobe not found in PATH - process failed to start", "error");
+                emit debugMessage("If you just installed FFmpeg, try restarting the application", "info");
+            } else {
+                emit debugMessage("FFprobe found but returned error code " + QString::number(ffprobeProcess.exitCode()), "error");
+            }
+        }
+        emit debugMessage("Both FFmpeg and FFprobe are required for video processing", "error");
+        emit debugMessage("Click 'Install' to automatically install FFmpeg", "info");
+        
         m_hardwareAccelerationAvailable = false;
         m_hardwareAccelerationType = "None";
         emit hardwareAccelerationAvailableChanged();
@@ -681,6 +770,168 @@ void VideoCompressor::installFFmpeg()
     emit ffmpegInstallationRequested();
 }
 
+void VideoCompressor::installFFmpegWithElevation()
+{
+    if (m_installProcess) {
+        emit debugMessage("Installation already in progress", "warning");
+        return;
+    }
+    
+    emit debugMessage("Starting FFmpeg installation with administrator privileges...", "info");
+    emit debugMessage("A User Account Control dialog will appear - please click 'Yes' to continue", "info");
+    
+    // Find the install-ffmpeg.ps1 script
+    QString scriptPath = QCoreApplication::applicationDirPath() + "/install-ffmpeg.ps1";
+    
+    // Check if script exists
+    if (!QFileInfo::exists(scriptPath)) {
+        emit debugMessage("ERROR: install-ffmpeg.ps1 not found at: " + scriptPath, "error");
+        emit debugMessage("Please ensure the installation script is in the same folder as the executable", "error");
+        return;
+    }
+    
+    emit debugMessage("Found installation script: " + scriptPath, "info");
+    
+#ifdef Q_OS_WIN
+    // Use Windows API to run PowerShell with elevation
+    emit debugMessage("Requesting administrator elevation using Windows API...", "info");
+    
+    QString arguments = QString("-ExecutionPolicy Bypass -File \"%1\"").arg(scriptPath);
+    
+    HINSTANCE result = ShellExecuteA(
+        NULL,
+        "runas",                    // Triggers UAC elevation
+        "powershell.exe",           // Program to execute
+        arguments.toLocal8Bit().data(), // Command line arguments
+        NULL,                       // Working directory (use current)
+        SW_SHOWNORMAL              // Show window normally
+    );
+    
+    // ShellExecute returns a value > 32 on success
+    if (reinterpret_cast<intptr_t>(result) > 32) {
+        emit debugMessage("PowerShell script launched with elevation successfully", "success");
+        emit debugMessage("Please wait for the installation to complete in the elevated window", "info");
+        
+        // Since we can't directly monitor the elevated process, 
+        // we'll check FFmpeg availability after a delay
+        QTimer::singleShot(10000, this, [this]() {
+            emit debugMessage("Checking if FFmpeg installation completed...", "info");
+            checkFFmpeg();
+            if (m_ffmpegAvailable) {
+                emit debugMessage("FFmpeg installation detected successfully!", "success");
+            } else {
+                emit debugMessage("FFmpeg not yet detected. Installation may still be in progress or was cancelled.", "warning");
+                emit debugMessage("You can manually check the installation or restart the application after installation completes.", "info");
+            }
+        });
+        
+    } else {
+        // Handle ShellExecute errors
+        DWORD error = GetLastError();
+        QString errorMsg;
+        
+        switch (error) {
+        case ERROR_CANCELLED:
+            errorMsg = "Installation cancelled by user (UAC dialog declined)";
+            break;
+        case ERROR_FILE_NOT_FOUND:
+            errorMsg = "PowerShell not found on the system";
+            break;
+        case ERROR_ACCESS_DENIED:
+            errorMsg = "Access denied - unable to elevate privileges";
+            break;
+        default:
+            errorMsg = QString("Windows API error: %1").arg(error);
+            break;
+        }
+        
+        emit debugMessage("Failed to launch elevated installation: " + errorMsg, "error");
+        emit debugMessage("You can try running the install-ffmpeg.ps1 script manually as administrator", "info");
+    }
+#else
+    // Fallback for non-Windows systems
+    emit debugMessage("Elevated installation only supported on Windows", "error");
+    emit debugMessage("Please install FFmpeg manually on this platform", "info");
+#endif
+}
+
+void VideoCompressor::onInstallProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
+{
+    if (!m_installProcess) {
+        return;
+    }
+    
+    QString output = QString::fromUtf8(m_installProcess->readAllStandardOutput());
+    QString error = QString::fromUtf8(m_installProcess->readAllStandardError());
+    
+    if (!output.isEmpty()) {
+        emit debugMessage("Installation output: " + output, "info");
+    }
+    
+    if (exitStatus == QProcess::NormalExit && exitCode == 0) {
+        emit debugMessage("FFmpeg installation completed successfully!", "success");
+        emit debugMessage("Checking FFmpeg availability...", "info");
+        
+        // Wait a moment then check FFmpeg availability
+        QTimer::singleShot(2000, this, [this]() {
+            checkFFmpeg();
+            if (m_ffmpegAvailable) {
+                emit debugMessage("FFmpeg installation verified successfully!", "success");
+            } else {
+                emit debugMessage("FFmpeg installed but not yet detected - you may need to restart the application", "warning");
+            }
+        });
+    } else {
+        emit debugMessage("FFmpeg installation failed", "error");
+        emit debugMessage("Exit code: " + QString::number(exitCode) + ", Status: " + 
+                         (exitStatus == QProcess::NormalExit ? "Normal" : "Crashed"), "error");
+        
+        if (!error.isEmpty()) {
+            emit debugMessage("Installation error: " + error, "error");
+        }
+        
+        if (exitCode == 1223) {
+            emit debugMessage("Installation was cancelled by user (UAC dialog)", "warning");
+        }
+    }
+    
+    // Cleanup
+    m_installProcess->deleteLater();
+    m_installProcess = nullptr;
+}
+
+void VideoCompressor::cleanupPassFiles()
+{
+    // Clean up FFmpeg two-pass log files
+    QDir tempDir(m_tempDir);
+    QStringList passFiles = tempDir.entryList(QStringList() << "ffmpeg2pass-*.log*", QDir::Files);
+    
+    for (const QString &file : passFiles) {
+        QString fullPath = tempDir.filePath(file);
+        if (QFile::remove(fullPath)) {
+            emit debugMessage("Cleaned up pass file: " + file, "info");
+        }
+    }
+    
+    // Also check current directory for pass files
+    QDir currentDir(".");
+    QStringList currentPassFiles = currentDir.entryList(QStringList() << "ffmpeg2pass-*.log*", QDir::Files);
+    
+    for (const QString &file : currentPassFiles) {
+        if (QFile::remove(file)) {
+            emit debugMessage("Cleaned up pass file: " + file, "info");
+        }
+    }
+}
+
+void VideoCompressor::cleanupTempFiles()
+{
+    QDir tempDir(m_tempDir);
+    if (tempDir.exists()) {
+        tempDir.removeRecursively();
+    }
+}
+
 QString VideoCompressor::formatFileSize(qint64 bytes)
 {
     const qint64 kb = 1024;
@@ -725,33 +976,106 @@ void VideoCompressor::updateVideoStatus(int index, VideoStatus status, const QSt
     emit dataChanged(idx, idx, {StatusRole, StatusTextRole, ProgressRole});
 }
 
-QString VideoCompressor::getFFmpegCommand(const VideoItem &item, const QString &outputPath, bool isFirstPass)
+void VideoCompressor::generateThumbnail(VideoItem &item)
 {
-    // This method is now only used for debugging/logging purposes
-    // The actual command building is done in startFFmpegProcess
-    int videoBitrate = calculateOptimalBitrate(item.durationSeconds, m_targetSizeMB);
-    
-    if (isFirstPass) {
-        QString nullOutput = 
-#ifdef Q_OS_WIN
-            "NUL";
-#else
-            "/dev/null";
-#endif
-        return QString("-i \"%1\" -c:v libx264 -b:v %2k -c:a aac -b:a 128k -pass 1 -f mp4 -y \"%3\"")
-               .arg(item.path)
-               .arg(videoBitrate)
-               .arg(nullOutput);
-    } else {
-        return QString("-i \"%1\" -c:v libx264 -b:v %2k -c:a aac -b:a 128k -pass 2 -movflags +faststart -y \"%3\"")
-               .arg(item.path)
-               .arg(videoBitrate)
-               .arg(outputPath);
+    // Always check FFmpeg availability first
+    if (!m_ffmpegAvailable) {
+        emit debugMessage("Cannot generate thumbnail: FFmpeg not available", "warning");
+        createPlaceholderThumbnail(item);
+        return;
     }
+    
+    // Test if FFmpeg actually works before using it
+    QProcess testProcess;
+    testProcess.start("ffmpeg", QStringList() << "-version");
+    bool canStart = testProcess.waitForStarted(2000);
+    if (canStart) {
+        testProcess.waitForFinished(2000);
+    }
+    
+    if (!canStart || testProcess.exitCode() != 0) {
+        emit debugMessage("FFmpeg test failed during thumbnail generation", "warning");
+        createPlaceholderThumbnail(item);
+        return;
+    }
+    
+    QString thumbnailPath = m_tempDir + "/" + QFileInfo(item.path).baseName() + "_thumb.jpg";
+    
+    // Use FFmpeg to extract a frame at 10% of video duration
+    QProcess thumbnailProcess;
+    QStringList args;
+    
+    // Calculate seek time (10% of duration, or 5 seconds if duration unknown)
+    double seekTime = item.durationSeconds > 0 ? item.durationSeconds * 0.1 : 5.0;
+    
+    args << "-i" << item.path
+         << "-ss" << QString::number(seekTime, 'f', 2)
+         << "-vframes" << "1"
+         << "-q:v" << "2"  // High quality
+         << "-vf" << "scale=120:68:force_original_aspect_ratio=decrease,pad=120:68:(ow-iw)/2:(oh-ih)/2:black"
+         << "-y" << thumbnailPath;
+    
+    emit debugMessage("Generating thumbnail for: " + item.fileName, "info");
+    
+    thumbnailProcess.start("ffmpeg", args);
+    if (thumbnailProcess.waitForFinished(10000)) {
+        if (thumbnailProcess.exitCode() == 0 && QFileInfo::exists(thumbnailPath)) {
+            QPixmap thumbnail;
+            if (thumbnail.load(thumbnailPath)) {
+                item.thumbnail = thumbnail;
+                emit debugMessage("Thumbnail generated successfully for: " + item.fileName, "success");
+            } else {
+                emit debugMessage("Failed to load generated thumbnail for: " + item.fileName, "warning");
+                createPlaceholderThumbnail(item);
+            }
+            // Clean up temporary thumbnail file
+            QFile::remove(thumbnailPath);
+        } else {
+            QString errorOutput = QString::fromUtf8(thumbnailProcess.readAllStandardError());
+            emit debugMessage("Thumbnail generation failed for " + item.fileName + ": " + errorOutput, "warning");
+            createPlaceholderThumbnail(item);
+        }
+    } else {
+        emit debugMessage("Thumbnail generation timed out for: " + item.fileName, "warning");
+        createPlaceholderThumbnail(item);
+    }
+}
+
+void VideoCompressor::createPlaceholderThumbnail(VideoItem &item)
+{
+    QPixmap placeholder(120, 68);
+    placeholder.fill(QColor(64, 64, 64)); // Dark gray background
+    
+    // Draw a simple video icon
+    QPainter painter(&placeholder);
+    painter.setRenderHint(QPainter::Antialiasing);
+    
+    // Draw play button triangle
+    painter.setPen(QPen(Qt::white, 2));
+    painter.setBrush(QBrush(Qt::white));
+    
+    QPolygon triangle;
+    triangle << QPoint(45, 25) << QPoint(45, 43) << QPoint(60, 34);
+    painter.drawPolygon(triangle);
+    
+    // Draw file extension text
+    QString extension = QFileInfo(item.path).suffix().toUpper();
+    if (!extension.isEmpty()) {
+        painter.setPen(Qt::lightGray);
+        painter.setFont(QFont("Arial", 8, QFont::Bold));
+        painter.drawText(QRect(65, 25, 50, 18), Qt::AlignCenter, extension);
+    }
+    
+    item.thumbnail = placeholder;
 }
 
 double VideoCompressor::getVideoDuration(const QString &filePath)
 {
+    if (!m_ffmpegAvailable) {
+        emit debugMessage("Cannot get video duration: FFmpeg/FFprobe not available", "error");
+        return 0.0;
+    }
+    
     QProcess process;
     QStringList args;
     args << "-v" << "quiet" 
@@ -759,19 +1083,42 @@ double VideoCompressor::getVideoDuration(const QString &filePath)
          << "-of" << "csv=p=0" 
          << filePath;
     
+    emit debugMessage("Getting duration for: " + QFileInfo(filePath).fileName(), "info");
+    emit debugMessage("FFprobe command: ffprobe " + args.join(" "), "info");
+    
     process.start("ffprobe", args);
+    bool started = process.waitForStarted(5000);
+    
+    if (!started) {
+        emit debugMessage("Failed to start FFprobe process for duration detection", "error");
+        emit debugMessage("FFprobe might not be installed or not in PATH", "error");
+        return 0.0;
+    }
+    
     if (!process.waitForFinished(10000)) {
+        emit debugMessage("FFprobe timed out for: " + filePath, "error");
+        process.kill();
         return 0.0;
     }
     
     if (process.exitCode() != 0) {
+        QString errorOutput = QString::fromUtf8(process.readAllStandardError());
+        emit debugMessage("FFprobe failed for " + filePath + " (exit code: " + QString::number(process.exitCode()) + ")", "error");
+        emit debugMessage("FFprobe error: " + errorOutput, "error");
         return 0.0;
     }
     
     QString output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
     bool ok;
     double duration = output.toDouble(&ok);
-    return ok ? duration : 0.0;
+    
+    if (ok && duration > 0) {
+        emit debugMessage("Duration detected: " + QString::number(duration, 'f', 1) + " seconds", "success");
+        return duration;
+    } else {
+        emit debugMessage("Invalid duration value from FFprobe: '" + output + "'", "error");
+        return 0.0;
+    }
 }
 
 int VideoCompressor::calculateOptimalBitrate(double durationSeconds, int targetSizeMB)
@@ -801,43 +1148,27 @@ int VideoCompressor::calculateOptimalBitrate(double durationSeconds, int targetS
     return videoBitrate;
 }
 
-void VideoCompressor::cleanupPassFiles()
+QString VideoCompressor::getFFmpegCommand(const VideoItem &item, const QString &outputPath, bool isFirstPass)
 {
-    // Clean up FFmpeg two-pass log files
-    QDir tempDir(m_tempDir);
-    QStringList passFiles = tempDir.entryList(QStringList() << "ffmpeg2pass-*.log*", QDir::Files);
+    // This method is now only used for debugging/logging purposes
+    // The actual command building is done in startFFmpegProcess
+    int videoBitrate = calculateOptimalBitrate(item.durationSeconds, m_targetSizeMB);
     
-    for (const QString &file : passFiles) {
-        QString fullPath = tempDir.filePath(file);
-        if (QFile::remove(fullPath)) {
-            emit debugMessage("Cleaned up pass file: " + file, "info");
-        }
-    }
-    
-    // Also check current directory for pass files
-    QDir currentDir(".");
-    QStringList currentPassFiles = currentDir.entryList(QStringList() << "ffmpeg2pass-*.log*", QDir::Files);
-    
-    for (const QString &file : currentPassFiles) {
-        if (QFile::remove(file)) {
-            emit debugMessage("Cleaned up pass file: " + file, "info");
-        }
-    }
-}
-
-void VideoCompressor::generateThumbnail(VideoItem &item)
-{
-    // For now, use a placeholder thumbnail
-    // In a real implementation, you'd extract a frame from the video
-    QPixmap placeholder(120, 68);
-    placeholder.fill(Qt::darkGray);
-    item.thumbnail = placeholder;
-}
-
-void VideoCompressor::cleanupTempFiles()
-{
-    QDir tempDir(m_tempDir);
-    if (tempDir.exists()) {
-        tempDir.removeRecursively();
+    if (isFirstPass) {
+        QString nullOutput = 
+#ifdef Q_OS_WIN
+            "NUL";
+#else
+            "/dev/null";
+#endif
+        return QString("-i \"%1\" -c:v libx264 -b:v %2k -c:a aac -b:a 128k -pass 1 -f mp4 -y \"%3\"")
+               .arg(item.path)
+               .arg(videoBitrate)
+               .arg(nullOutput);
+    } else {
+        return QString("-i \"%1\" -c:v libx264 -b:v %2k -c:a aac -b:a 128k -pass 2 -movflags +faststart -y \"%3\"")
+               .arg(item.path)
+               .arg(videoBitrate)
+               .arg(outputPath);
     }
 }

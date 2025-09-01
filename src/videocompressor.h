@@ -86,6 +86,7 @@ public slots:
     void saveToFolder(const QUrl &folderUrl);
     void checkFFmpeg();
     void installFFmpeg();
+    void installFFmpegWithElevation(); // Add new method for elevated installation
 
 signals:
     void targetSizeMBChanged();
@@ -105,6 +106,7 @@ private slots:
     void processNextVideo();
     void onFFmpegFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void onFFmpegProgress();
+    void onInstallProcessFinished(int exitCode, QProcess::ExitStatus exitStatus); // Add new slot
 
 private:
     QList<VideoItem> m_videos;
@@ -120,8 +122,10 @@ private:
     bool m_hardwareAccelerationEnabled;
     bool m_hardwareAccelerationAvailable;
     QString m_hardwareAccelerationType;
+    QProcess *m_installProcess; // Add install process tracker
     
     void generateThumbnail(VideoItem &item);
+    void createPlaceholderThumbnail(VideoItem &item); // Add new method
     QString formatFileSize(qint64 bytes);
     bool isVideoFile(const QString &path);
     void updateVideoStatus(int index, VideoStatus status, const QString &statusText, int progress = 0);

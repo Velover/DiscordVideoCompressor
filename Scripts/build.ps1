@@ -57,9 +57,9 @@ if (Test-Path ".\app.ico") {
     Write-Host "Warning: app.ico not found in root directory" -ForegroundColor Yellow
 }
 
-# Copy install-ffmpeg.bat script
+# Copy install-ffmpeg.ps1 script
 Write-Host "Copying FFmpeg installer..." -ForegroundColor Blue
-Copy-Item -Path ".\Scripts\install-ffmpeg.bat" -Destination ".\out" -Force
+Copy-Item -Path ".\Scripts\install-ffmpeg.ps1" -Destination ".\out" -Force
 
 # Deploy Qt dependencies using windeployqt
 Write-Host "Deploying Qt dependencies..." -ForegroundColor Blue
@@ -81,5 +81,5 @@ Write-Host "Build completed successfully!" -ForegroundColor Green
 Write-Host "Build Type: $BuildType" -ForegroundColor Cyan
 Write-Host "Executable location: .\out\video_compressor.exe" -ForegroundColor Cyan
 Write-Host "Application icon: .\out\app.ico" -ForegroundColor Cyan
-Write-Host "FFmpeg installer: .\out\install-ffmpeg.bat" -ForegroundColor Cyan
+Write-Host "FFmpeg installer: .\out\install-ffmpeg.ps1" -ForegroundColor Cyan
 Write-Host "All required DLLs have been deployed to the out directory." -ForegroundColor Cyan
