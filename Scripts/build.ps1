@@ -1,6 +1,6 @@
-# Build script for Video Player with dynamic Qt linking
+# Build script for Video Compressor with dynamic Qt linking
 param(
-    [string]$BuildType = "Release"
+    [string]$BuildType = "Debug"
 )
 
 # Validate build type
@@ -10,7 +10,7 @@ if ($BuildType -ne "Release" -and $BuildType -ne "Debug") {
     exit 1
 }
 
-Write-Host "Building Video Player ($BuildType)..." -ForegroundColor Green
+Write-Host "Building Video Compressor ($BuildType)..." -ForegroundColor Green
 
 # Set Qt path for dynamic builds
 $env:PATH = "C:\Qt\6.9.2\mingw_64\bin;" + $env:PATH
@@ -47,11 +47,15 @@ if ($LASTEXITCODE -ne 0) {
 # Create output directory and copy executable
 Write-Host "Preparing output..." -ForegroundColor Blue
 New-Item -ItemType Directory -Force -Path ".\out" | Out-Null
-Copy-Item -Path ".\build\qt_hello.exe" -Destination ".\out" -Force
+Copy-Item -Path ".\build\video_compressor.exe" -Destination ".\out" -Force
+
+# Copy install-ffmpeg.bat script
+Write-Host "Copying FFmpeg installer..." -ForegroundColor Blue
+Copy-Item -Path ".\Scripts\install-ffmpeg.bat" -Destination ".\out" -Force
 
 # Deploy Qt dependencies using windeployqt
 Write-Host "Deploying Qt dependencies..." -ForegroundColor Blue
-windeployqt out\qt_hello.exe --qmldir .\qml 2>&1 | Where-Object { 
+windeployqt out\video_compressor.exe --qmldir .\qml 2>&1 | Where-Object { 
     $_ -notmatch "^Checking" -and 
     $_ -notmatch "^Updating" -and
     $_ -notmatch "^Installing:" -and
@@ -67,5 +71,6 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Build completed successfully!" -ForegroundColor Green
 Write-Host "Build Type: $BuildType" -ForegroundColor Cyan
-Write-Host "Executable location: .\out\qt_hello.exe" -ForegroundColor Cyan
+Write-Host "Executable location: .\out\video_compressor.exe" -ForegroundColor Cyan
+Write-Host "FFmpeg installer: .\out\install-ffmpeg.bat" -ForegroundColor Cyan
 Write-Host "All required DLLs have been deployed to the out directory." -ForegroundColor Cyan

@@ -7,6 +7,7 @@
 ClipboardManager::ClipboardManager(QObject *parent)
     : QObject(parent)
     , m_clipboard(QApplication::clipboard())
+    , m_autoDetectionEnabled(true) // Enable auto-detection initially
 {
     connect(m_clipboard, &QClipboard::dataChanged,
             this, &ClipboardManager::onClipboardChanged);
@@ -75,11 +76,18 @@ QString ClipboardManager::getClipboardText() const
     return m_clipboard->text();
 }
 
+void ClipboardManager::disableAutoDetection()
+{
+    m_autoDetectionEnabled = false;
+    qDebug() << "Auto-detection disabled - will only detect on manual Ctrl+V";
+}
+
 void ClipboardManager::onClipboardChanged()
 {
     emit clipboardChanged();
     
-    if (hasVideoUrl()) {
+    // Only auto-detect if enabled (only during launch phase)
+    if (m_autoDetectionEnabled && hasVideoUrl()) {
         QUrl url = getVideoUrl();
         if (url.isValid()) {
             emit videoUrlFound(url);

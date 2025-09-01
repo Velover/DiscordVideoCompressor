@@ -18,6 +18,7 @@ public slots:
     bool hasVideoUrl() const;
     QUrl getVideoUrl() const;
     QString getClipboardText() const;
+    void disableAutoDetection(); // Add method to disable auto-detection
 
 signals:
     void videoUrlFound(const QUrl &url);
@@ -28,6 +29,7 @@ private slots:
 
 private:
     QClipboard *m_clipboard;
+    bool m_autoDetectionEnabled; // Add flag for auto-detection
     bool isVideoUrl(const QString &text) const;
     bool isVideoFile(const QString &path) const;
 };

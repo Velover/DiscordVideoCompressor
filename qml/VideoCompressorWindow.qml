@@ -1,0 +1,315 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import QtQuick.Dialogs
+
+ApplicationWindow {
+    id: window
+    visible: true
+    width: 1000
+    height: 700
+    title: "Video Compressor"
+
+    property alias debugConsole: debugConsole
+
+    // File dialog for opening videos
+    FileDialog {
+        id: fileDialog
+        title: "Select Video Files"
+        fileMode: FileDialog.OpenFiles
+        nameFilters: ["Video files (*.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v *.3gp *.ogv *.mpg *.mpeg)", "All files (*)"]
+        onAccepted: {
+            for (var i = 0; i < selectedFiles.length; i++) {
+                videoCompressor.addVideo(selectedFiles[i]);
+            }
+        }
+    }
+
+    // Folder dialog for saving
+    FolderDialog {
+        id: folderDialog
+        title: "Select Output Folder"
+        onAccepted: {
+            videoCompressor.saveToFolder(selectedFolder);
+        }
+    }
+
+    // Error dialog
+    Dialog {
+        id: errorDialog
+        title: "Error"
+        property alias text: errorText.text
+        modal: true
+        anchors.centerIn: parent
+
+        Text {
+            id: errorText
+            wrapMode: Text.WordWrap
+            width: parent.width
+        }
+
+        standardButtons: Dialog.Ok
+    }
+
+    // FFmpeg installation dialog
+    FFmpegInstallDialog {
+        id: ffmpegInstallDialog
+        onInstallationCompleted: {
+            videoCompressor.checkFFmpeg();
+        }
+    }
+
+    // Drag and drop area
+    DropArea {
+        id: dropArea
+        anchors.fill: parent
+
+        onDropped: function (drop) {
+            if (drop.hasUrls) {
+                for (var i = 0; i < drop.urls.length; i++) {
+                    videoCompressor.addVideo(drop.urls[i]);
+                }
+            }
+        }
+
+        Rectangle {
+            id: dropIndicator
+            anchors.fill: parent
+            color: "lightblue"
+            opacity: dropArea.containsDrag ? 0.3 : 0
+            border.color: "blue"
+            border.width: 2
+
+            Text {
+                anchors.centerIn: parent
+                text: "Drop video files here"
+                font.pixelSize: 24
+                color: "blue"
+                visible: dropArea.containsDrag
+            }
+
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 200
+                }
+            }
+        }
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 20
+        spacing: 20
+
+        // Header with controls
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 15
+
+            Text {
+                text: "Video Compressor"
+                font.pixelSize: 24
+                font.bold: true
+            }
+
+            Item {
+                Layout.fillWidth: true
+            }
+
+            // FFmpeg status
+            RowLayout {
+                spacing: 5
+
+                Rectangle {
+                    width: 12
+                    height: 12
+                    radius: 6
+                    color: videoCompressor.ffmpegAvailable ? "green" : "red"
+                }
+
+                Text {
+                    text: videoCompressor.ffmpegAvailable ? "FFmpeg Ready" : "FFmpeg Not Found"
+                    color: videoCompressor.ffmpegAvailable ? "green" : "red"
+                }
+
+                Button {
+                    text: "Install"
+                    visible: !videoCompressor.ffmpegAvailable
+                    onClicked: ffmpegInstallDialog.open()
+                }
+            }
+        }
+
+        // Controls row
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 15
+
+            Button {
+                text: "Add Videos"
+                onClicked: fileDialog.open()
+            }
+
+            Button {
+                text: "Clear All"
+                enabled: !videoCompressor.isCompressing
+                onClicked: videoCompressor.clearVideos()
+            }
+
+            Item {
+                width: 20
+            }
+
+            Text {
+                text: "Target Size:"
+            }
+
+            ComboBox {
+                id: sizeComboBox
+                model: ["10 MB", "50 MB"]
+                currentIndex: videoCompressor.targetSizeMB === 10 ? 0 : 1
+                onCurrentIndexChanged: {
+                    videoCompressor.targetSizeMB = currentIndex === 0 ? 10 : 50;
+                }
+            }
+
+            Button {
+                text: "Compress"
+                enabled: !videoCompressor.isCompressing && videoCompressor.totalCount > 0 && videoCompressor.ffmpegAvailable
+                onClicked: videoCompressor.startCompression()
+            }
+
+            Item {
+                Layout.fillWidth: true
+            }
+
+            // Progress info
+            Text {
+                text: videoCompressor.completedCount + " / " + videoCompressor.totalCount + " completed"
+                visible: videoCompressor.totalCount > 0
+            }
+        }
+
+        // Video list
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            border.color: "#cccccc"
+            border.width: 1
+
+            ScrollView {
+                anchors.fill: parent
+                anchors.margins: 1
+
+                ListView {
+                    id: videoList
+                    model: videoCompressor
+                    spacing: 5
+
+                    delegate: VideoListItem {
+                        width: videoList.width
+                        onRemoveRequested: function (index) {
+                            videoCompressor.removeVideo(index);
+                        }
+                    }
+                }
+            }
+
+            // Placeholder when empty
+            Text {
+                anchors.centerIn: parent
+                text: "Drop video files here or click 'Add Videos' to get started"
+                color: "#666666"
+                font.pixelSize: 16
+                visible: videoCompressor.totalCount === 0
+            }
+        }
+
+        // Debug Console
+        DebugConsole {
+            id: debugConsole
+            Layout.fillWidth: true
+            Layout.preferredHeight: collapsed ? 30 : 200
+            Layout.minimumHeight: 30
+        }
+
+        // Export buttons
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 15
+
+            Button {
+                text: "Copy to Clipboard"
+                enabled: videoCompressor.completedCount > 0
+                onClicked: {
+                    videoCompressor.copyToClipboard();
+                    debugConsole.addMessage("Copied " + videoCompressor.completedCount + " videos to clipboard");
+                }
+            }
+
+            Button {
+                text: "Save As..."
+                enabled: videoCompressor.completedCount > 0
+                onClicked: {
+                    debugConsole.addMessage("Opening folder selection dialog...");
+                    folderDialog.open();
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+            }
+        }
+    }
+
+    // Connections
+    Connections {
+        target: videoCompressor
+        function onError(message) {
+            errorDialog.text = message;
+            errorDialog.open();
+            debugConsole.addMessage("ERROR: " + message, "error");
+        }
+        function onFfmpegInstallationRequested() {
+            debugConsole.addMessage("FFmpeg installation requested");
+            ffmpegInstallDialog.open();
+        }
+        function onCompressionFinished() {
+            debugConsole.addMessage("Compression batch completed", "success");
+        }
+        function onTargetSizeMBChanged() {
+            debugConsole.addMessage("Target size changed to: " + videoCompressor.targetSizeMB + " MB");
+        }
+        function onIsCompressingChanged() {
+            if (videoCompressor.isCompressing) {
+                debugConsole.addMessage("Starting compression batch...", "info");
+            } else {
+                debugConsole.addMessage("Compression stopped", "info");
+            }
+        }
+        function onDebugMessage(message, type) {
+            debugConsole.addMessage(message, type);
+        }
+    }
+
+    // Keyboard shortcuts
+    Shortcut {
+        sequence: "Ctrl+V"
+        onActivated: {
+            if (clipboardManager.hasVideoUrl()) {
+                var url = clipboardManager.getVideoUrl();
+                if (url.toString() !== "") {
+                    videoCompressor.addVideo(url);
+                    debugConsole.addMessage("Added video from clipboard (Ctrl+V): " + url.toString(), "success");
+                }
+            } else {
+                debugConsole.addMessage("No valid video URL found in clipboard", "warning");
+            }
+        }
+    }
+
+    Shortcut {
+        sequence: "Ctrl+O"
+        onActivated: fileDialog.open()
+    }
+}

@@ -4,7 +4,7 @@
 #include <QDir>
 #include <QQuickStyle>
 #include <QQmlContext>
-#include "videoplayer.h"
+#include "videocompressor.h"
 #include "clipboardmanager.h"
 
 int main(int argc, char *argv[])
@@ -12,38 +12,42 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     
     // Set application properties
-    app.setApplicationName("Video Player");
+    app.setApplicationName("Video Compressor");
     app.setApplicationVersion("1.0");
-    app.setOrganizationName("VideoPlayer");
+    app.setOrganizationName("VideoCompressor");
     
     // Use Material style for better UI
     QQuickStyle::setStyle("Material");
     
     // Register QML types
-    qmlRegisterType<VideoPlayer>("VideoPlayer", 1, 0, "VideoPlayer");
-    qmlRegisterType<ClipboardManager>("VideoPlayer", 1, 0, "ClipboardManager");
+    qmlRegisterType<VideoCompressor>("VideoCompressor", 1, 0, "VideoCompressor");
+    qmlRegisterType<ClipboardManager>("VideoCompressor", 1, 0, "ClipboardManager");
     
     // Create QML engine
     QQmlApplicationEngine engine;
     
     // Create instances to be used in QML
-    VideoPlayer videoPlayer;
+    VideoCompressor videoCompressor;
     ClipboardManager clipboardManager;
     
     // Make instances available to QML
-    engine.rootContext()->setContextProperty("videoPlayer", &videoPlayer);
+    engine.rootContext()->setContextProperty("videoCompressor", &videoCompressor);
     engine.rootContext()->setContextProperty("clipboardManager", &clipboardManager);
     
-    // Auto-load video from clipboard on startup if available
+    // Auto-detect videos from clipboard on startup ONLY
     if (clipboardManager.hasVideoUrl()) {
         QUrl url = clipboardManager.getVideoUrl();
         if (url.isValid()) {
-            videoPlayer.loadVideo(url);
+            videoCompressor.addVideo(url);
+            qDebug() << "Auto-added video from clipboard on startup:" << url.toString();
         }
     }
     
+    // Disable auto-detection after launch - only respond to manual Ctrl+V
+    clipboardManager.disableAutoDetection();
+    
     // Load main QML file
-    const QUrl url(QStringLiteral("qrc:/qml/VideoPlayerWindow.qml"));
+    const QUrl url(QStringLiteral("qrc:/qml/VideoCompressorWindow.qml"));
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,
                      &app, [url](QObject *obj, const QUrl &objUrl) {
         if (!obj && url == objUrl)

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(VideoPlayer LANGUAGES CXX)
+project(VideoCompressor LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,16 +11,12 @@ set(CMAKE_PREFIX_PATH "C:/Qt/6.9.2/mingw_64")
 find_package(Qt6 REQUIRED COMPONENTS 
     Core 
     Widgets 
-    Multimedia 
-    MultimediaWidgets
     Quick
     Qml
     QuickControls2
 )
 
 qt_standard_project_setup()
-
-
 
 # Debug: Print the actual CMAKE_BUILD_TYPE value
 message(STATUS "CMAKE_BUILD_TYPE is: '${CMAKE_BUILD_TYPE}'")
@@ -39,41 +35,41 @@ message(STATUS "Build type (uppercase): ${BUILD_TYPE_UPPER}")
 # Use normalized comparison
 if(BUILD_TYPE_UPPER STREQUAL "DEBUG")
     message(STATUS "Creating DEBUG executable")
-    qt_add_executable(qt_hello 
+    qt_add_executable(video_compressor 
         src/main.cpp
-        src/videoplayer.cpp
-        src/videoplayer.h
+        src/videocompressor.cpp
+        src/videocompressor.h
         src/clipboardmanager.cpp
         src/clipboardmanager.h
     )
 else()
     message(STATUS "Creating RELEASE executable (WIN32)")
-    qt_add_executable(qt_hello WIN32
+    qt_add_executable(video_compressor WIN32
         src/main.cpp
-        src/videoplayer.cpp
-        src/videoplayer.h
+        src/videocompressor.cpp
+        src/videocompressor.h
         src/clipboardmanager.cpp
         src/clipboardmanager.h
     )
 endif()
 
 # Set up include directories
-target_include_directories(qt_hello PRIVATE src)
+target_include_directories(video_compressor PRIVATE src)
 
 # Add QML resources
-qt_add_resources(qt_hello "qml_resources"
+qt_add_resources(video_compressor "qml_resources"
     PREFIX "/"
     FILES
-        qml/VideoPlayerWindow.qml
-        qml/VideoControls.qml
+        qml/VideoCompressorWindow.qml
+        qml/VideoListItem.qml
+        qml/FFmpegInstallDialog.qml
+        qml/DebugConsole.qml
 )
 
 # Link Qt libraries
-target_link_libraries(qt_hello PRIVATE 
+target_link_libraries(video_compressor PRIVATE 
     Qt6::Core
     Qt6::Widgets
-    Qt6::Multimedia
-    Qt6::MultimediaWidgets
     Qt6::Quick
     Qt6::Qml
     Qt6::QuickControls2
