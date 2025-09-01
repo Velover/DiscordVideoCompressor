@@ -9,6 +9,7 @@
 #include <QUrl>
 #include <QFileDialog>
 #include <QProcess>
+#include <QBuffer>
 #include <QRegularExpression>
 #include <QPainter>
 #ifdef Q_OS_WIN
@@ -70,8 +71,16 @@ QVariant VideoCompressor::data(const QModelIndex &index, int role) const
     case ProgressRole:
         return item.progress;
     case ThumbnailRole:
-        // Convert QPixmap to QImage for QML
-        return QVariant::fromValue(item.thumbnail.toImage());
+        // Convert QPixmap to base64 data URL for QML Image component
+        if (!item.thumbnail.isNull()) {
+            QByteArray byteArray;
+            QBuffer buffer(&byteArray);
+            buffer.open(QIODevice::WriteOnly);
+            item.thumbnail.save(&buffer, "PNG");
+            QString base64 = QString("data:image/png;base64,%1").arg(QString(byteArray.toBase64()));
+            return base64;
+        }
+        return QString();
     default:
         return QVariant();
     }
@@ -983,6 +992,14 @@ void VideoCompressor::generateThumbnail(VideoItem &item)
     if (!m_ffmpegAvailable) {
         emit debugMessage("Cannot generate thumbnail: FFmpeg not available", "warning");
         createPlaceholderThumbnail(item);
+        // Find the item index and update the model
+        for (int i = 0; i < m_videos.size(); ++i) {
+            if (m_videos[i].path == item.path) {
+                QModelIndex idx = index(i);
+                emit dataChanged(idx, idx, {ThumbnailRole});
+                break;
+            }
+        }
         return;
     }
     
@@ -997,6 +1014,14 @@ void VideoCompressor::generateThumbnail(VideoItem &item)
     if (!canStart || testProcess.exitCode() != 0) {
         emit debugMessage("FFmpeg test failed during thumbnail generation", "warning");
         createPlaceholderThumbnail(item);
+        // Find the item index and update the model
+        for (int i = 0; i < m_videos.size(); ++i) {
+            if (m_videos[i].path == item.path) {
+                QModelIndex idx = index(i);
+                emit dataChanged(idx, idx, {ThumbnailRole});
+                break;
+            }
+        }
         return;
     }
     
@@ -1025,19 +1050,6 @@ void VideoCompressor::generateThumbnail(VideoItem &item)
             if (thumbnail.load(thumbnailPath)) {
                 item.thumbnail = thumbnail;
                 emit debugMessage("Thumbnail generated successfully for: " + item.fileName, "success");
-                
-                // Notify QML that the thumbnail has changed
-                int itemIndex = -1;
-                for (int i = 0; i < m_videos.size(); ++i) {
-                    if (m_videos[i].path == item.path) {
-                        itemIndex = i;
-                        break;
-                    }
-                }
-                if (itemIndex >= 0) {
-                    QModelIndex idx = index(itemIndex);
-                    emit dataChanged(idx, idx, {ThumbnailRole});
-                }
             } else {
                 emit debugMessage("Failed to load generated thumbnail for: " + item.fileName, "warning");
                 createPlaceholderThumbnail(item);
@@ -1052,6 +1064,16 @@ void VideoCompressor::generateThumbnail(VideoItem &item)
     } else {
         emit debugMessage("Thumbnail generation timed out for: " + item.fileName, "warning");
         createPlaceholderThumbnail(item);
+    }
+    
+    // Always update the model after thumbnail generation (success or failure)
+    for (int i = 0; i < m_videos.size(); ++i) {
+        if (m_videos[i].path == item.path) {
+            m_videos[i].thumbnail = item.thumbnail; // Update the actual item in the list
+            QModelIndex idx = index(i);
+            emit dataChanged(idx, idx, {ThumbnailRole});
+            break;
+        }
     }
 }
 

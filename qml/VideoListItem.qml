@@ -27,14 +27,17 @@ Rectangle {
             Image {
                 id: thumbnailImage
                 anchors.fill: parent
-                source: thumbnail ? "image://thumbnail/" + Math.random() : "" // Force refresh
+                source: thumbnail || ""
                 cache: false
                 fillMode: Image.PreserveAspectFit
-                visible: thumbnail !== undefined && thumbnail !== null
+                visible: thumbnail && thumbnail !== ""
+                asynchronous: true
 
                 onStatusChanged: {
                     if (status === Image.Error) {
                         console.log("Thumbnail loading failed for:", fileName);
+                    } else if (status === Image.Ready) {
+                        console.log("Thumbnail loaded successfully for:", fileName);
                     }
                 }
             }
@@ -44,7 +47,8 @@ Rectangle {
                 anchors.centerIn: parent
                 text: "📹"
                 font.pixelSize: 24
-                visible: !thumbnailImage.visible
+                visible: !thumbnailImage.visible || thumbnailImage.status === Image.Error
+                color: "#666666"
             }
 
             // File extension overlay
@@ -55,7 +59,7 @@ Rectangle {
                 height: 15
                 color: "#000000"
                 opacity: 0.7
-                visible: thumbnailImage.visible
+                visible: thumbnailImage.visible && thumbnailImage.status === Image.Ready
 
                 Text {
                     anchors.centerIn: parent
@@ -67,6 +71,15 @@ Rectangle {
                     font.pixelSize: 8
                     font.bold: true
                 }
+            }
+
+            // Loading indicator for thumbnail generation
+            BusyIndicator {
+                anchors.centerIn: parent
+                running: thumbnailImage.status === Image.Loading
+                visible: running
+                width: 24
+                height: 24
             }
         }
 
