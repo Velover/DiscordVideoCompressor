@@ -49,6 +49,14 @@ Write-Host "Preparing output..." -ForegroundColor Blue
 New-Item -ItemType Directory -Force -Path ".\out" | Out-Null
 Copy-Item -Path ".\build\video_compressor.exe" -Destination ".\out" -Force
 
+# Copy application icon
+Write-Host "Copying application icon..." -ForegroundColor Blue
+if (Test-Path ".\app.ico") {
+    Copy-Item -Path ".\app.ico" -Destination ".\out" -Force
+} else {
+    Write-Host "Warning: app.ico not found in root directory" -ForegroundColor Yellow
+}
+
 # Copy install-ffmpeg.bat script
 Write-Host "Copying FFmpeg installer..." -ForegroundColor Blue
 Copy-Item -Path ".\Scripts\install-ffmpeg.bat" -Destination ".\out" -Force
@@ -72,5 +80,6 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Build completed successfully!" -ForegroundColor Green
 Write-Host "Build Type: $BuildType" -ForegroundColor Cyan
 Write-Host "Executable location: .\out\video_compressor.exe" -ForegroundColor Cyan
+Write-Host "Application icon: .\out\app.ico" -ForegroundColor Cyan
 Write-Host "FFmpeg installer: .\out\install-ffmpeg.bat" -ForegroundColor Cyan
 Write-Host "All required DLLs have been deployed to the out directory." -ForegroundColor Cyan

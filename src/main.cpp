@@ -16,6 +16,18 @@ int main(int argc, char *argv[])
     app.setApplicationVersion("1.0");
     app.setOrganizationName("VideoCompressor");
     
+    // Set application icon from app.ico in root directory
+    QString iconPath = QDir(QApplication::applicationDirPath()).filePath("../app.ico");
+    if (QFile::exists(iconPath)) {
+        app.setWindowIcon(QIcon(iconPath));
+    } else {
+        // Fallback: try relative to executable for deployed version
+        QString fallbackPath = QDir(QApplication::applicationDirPath()).filePath("app.ico");
+        if (QFile::exists(fallbackPath)) {
+            app.setWindowIcon(QIcon(fallbackPath));
+        }
+    }
+    
     // Use Material style for better UI
     QQuickStyle::setStyle("Material");
     

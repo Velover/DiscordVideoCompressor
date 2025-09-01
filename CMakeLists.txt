@@ -32,6 +32,14 @@ endif()
 string(TOUPPER "${CMAKE_BUILD_TYPE}" BUILD_TYPE_UPPER)
 message(STATUS "Build type (uppercase): ${BUILD_TYPE_UPPER}")
 
+# Create Windows resource file for icon
+set(RESOURCE_FILES "")
+if(WIN32)
+    set(RESOURCE_FILE "${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc")
+    file(WRITE ${RESOURCE_FILE} "IDI_ICON1 ICON \"${CMAKE_CURRENT_SOURCE_DIR}/app.ico\"\n")
+    set(RESOURCE_FILES ${RESOURCE_FILE})
+endif()
+
 # Use normalized comparison
 if(BUILD_TYPE_UPPER STREQUAL "DEBUG")
     message(STATUS "Creating DEBUG executable")
@@ -41,6 +49,7 @@ if(BUILD_TYPE_UPPER STREQUAL "DEBUG")
         src/videocompressor.h
         src/clipboardmanager.cpp
         src/clipboardmanager.h
+        ${RESOURCE_FILES}
     )
 else()
     message(STATUS "Creating RELEASE executable (WIN32)")
@@ -50,6 +59,7 @@ else()
         src/videocompressor.h
         src/clipboardmanager.cpp
         src/clipboardmanager.h
+        ${RESOURCE_FILES}
     )
 endif()
 
