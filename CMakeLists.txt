@@ -7,6 +7,30 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Configure for dynamic builds
 set(CMAKE_PREFIX_PATH "C:/Qt/6.9.2/mingw_64")
 
+# Set OpenCV paths manually to avoid the broken config
+set(OpenCV_INCLUDE_DIRS "C:/CppPackages/opencv_static/install/include")
+set(OpenCV_LIB_DIR "C:/CppPackages/opencv_static/install/x64/mingw/staticlib")
+
+# Manually specify OpenCV libraries in correct order
+set(OpenCV_LIBS
+    ${OpenCV_LIB_DIR}/libopencv_highgui4130.a
+    ${OpenCV_LIB_DIR}/libopencv_imgcodecs4130.a
+    ${OpenCV_LIB_DIR}/libopencv_imgproc4130.a
+    ${OpenCV_LIB_DIR}/libopencv_core4130.a
+    ${OpenCV_LIB_DIR}/libIlmImf.a
+    ${OpenCV_LIB_DIR}/liblibtiff.a
+    ${OpenCV_LIB_DIR}/liblibwebp.a
+    ${OpenCV_LIB_DIR}/liblibpng.a
+    ${OpenCV_LIB_DIR}/liblibjpeg-turbo.a
+    ${OpenCV_LIB_DIR}/liblibopenjp2.a
+    ${OpenCV_LIB_DIR}/libzlib.a
+    comctl32
+    gdi32
+    ole32
+    setupapi
+    ws2_32
+)
+
 # Find required Qt components
 find_package(Qt6 REQUIRED COMPONENTS 
     Core 
@@ -65,7 +89,10 @@ else()
 endif()
 
 # Set up include directories
-target_include_directories(video_compressor PRIVATE src)
+target_include_directories(video_compressor PRIVATE 
+    src
+    ${OpenCV_INCLUDE_DIRS}
+)
 
 # Add QML resources
 qt_add_resources(video_compressor "qml_resources"
@@ -76,7 +103,7 @@ qt_add_resources(video_compressor "qml_resources"
         qml/DebugConsole.qml
 )
 
-# Link Qt libraries (added Gui for QPainter)
+# Link Qt libraries and OpenCV
 target_link_libraries(video_compressor PRIVATE 
     Qt6::Core
     Qt6::Widgets
@@ -84,4 +111,9 @@ target_link_libraries(video_compressor PRIVATE
     Qt6::Qml
     Qt6::QuickControls2
     Qt6::Gui
+    ${OpenCV_LIBS}
 )
+
+# Print OpenCV information for debugging
+message(STATUS "OpenCV_INCLUDE_DIRS: ${OpenCV_INCLUDE_DIRS}")
+message(STATUS "OpenCV_LIBS: ${OpenCV_LIBS}")
